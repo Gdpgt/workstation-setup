@@ -1045,6 +1045,39 @@ EOF
 }
 
 # ============================================================
+# Identite git perso (noreply) pour les repos sous ~/code
+# ============================================================
+#
+# Ce repo est PUBLIC : un commit expose l'email git de la machine. Pour ne jamais
+# fuiter d'email reel (gmail perso, ou email pro sur un PC de travail), on route
+# tous mes repos PERSO (ranges sous ~/code) vers l'adresse noreply GitHub, via un
+# 'includeIf' conditionnel. Ca ne touche PAS l'identite globale par defaut : sur
+# un PC pro, les repos sous ~/workspace gardent l'email pro.
+#
+# includeIf couvre TOUS mes projets perso (pas seulement ce repo), sur chaque
+# machine provisionnee. Idempotent : 'git config' reecrit la meme valeur.
+
+configure_git_perso_identity() {
+    section "Identite git perso (noreply pour ~/code)"
+
+    if ! command -v git >/dev/null 2>&1; then
+        log_warn "git absent : identite perso non configuree (non bloquant)"
+        return
+    fi
+
+    local perso_file="$HOME/.gitconfig-perso"
+    # Fichier d'identite perso, inclus conditionnellement ci-dessous. 'git config
+    # --file' cree/met a jour ces 2 cles sans toucher au reste du fichier.
+    git config --file "$perso_file" user.name  "Guillaume de Puget"
+    git config --file "$perso_file" user.email "142890016+Gdpgt@users.noreply.github.com"
+
+    # includeIf : tout repo dont le .git est sous ~/code/ utilise l'identite perso.
+    git config --global "includeIf.gitdir:~/code/.path" "~/.gitconfig-perso"
+
+    log_ok "Repos sous ~/code -> noreply (includeIf)"
+}
+
+# ============================================================
 # Alias shell (~/.bashrc)
 # ============================================================
 #
@@ -1795,6 +1828,7 @@ main() {
     configure_services
     configure_git
     configure_gitignore_global
+    configure_git_perso_identity
     configure_shell_aliases
     configure_hardware_optimization
     configure_keyboard

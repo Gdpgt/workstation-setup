@@ -47,7 +47,9 @@ dans l'ordre :
 4. Configure le `.gitconfig` (options + alias via `git config --global`) —
    n'écrit pas l'identité (`user.name`/`user.email`), qui reste manuelle. Puis
    crée `~/.gitignore_global` (pointé par `core.excludesfile`) **si absent** :
-   exclusions OS / IDE / build / `.env` (UTF-8 sans BOM)
+   exclusions OS / IDE / build / `.env` (UTF-8 sans BOM). Enfin pose l'identité
+   perso (noreply GitHub) pour les repos sous `~/code` via `includeIf` (repo
+   public → jamais d'email réel exposé ; repos pro sous `~/workspace` = email pro)
 5. Installe les CLI IA via npm (`codex`) + Angular CLI (`@angular/cli` → `ng`).
    **Claude Code = natif** (bootstrap), plus via npm ; le script retire l'ancien
    npm orphelin s'il traîne

@@ -579,6 +579,30 @@ npm-debug.log*
 }
 
 # ============================================================
+# Identite git perso (noreply) pour les repos sous ~/code
+# ============================================================
+#
+# Ce repo est PUBLIC : un commit expose l'email git de la machine. Pour ne jamais
+# fuiter d'email reel (gmail perso, ou email pro sur un PC de travail), on route
+# tous mes repos PERSO (ranges sous ~/code) vers l'adresse noreply GitHub, via un
+# 'includeIf' conditionnel. Ca ne touche PAS l'identite globale par defaut : sur
+# un PC pro, les repos sous ~/workspace gardent l'email pro. Idempotent.
+
+Write-Section "Identite git perso (noreply pour ~/code)"
+
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    Write-Warn "git absent : identite perso non configuree (non bloquant)"
+} else {
+    $persoFile = Join-Path $HOME '.gitconfig-perso'
+    # 'git config --file' cree/met a jour ces 2 cles sans toucher au reste.
+    git config --file $persoFile user.name  "Guillaume de Puget"
+    git config --file $persoFile user.email "142890016+Gdpgt@users.noreply.github.com"
+    # gitdir/i : matching insensible a la casse (chemins Windows).
+    git config --global 'includeIf.gitdir/i:~/code/.path' '~/.gitconfig-perso'
+    Write-Ok "Repos sous ~/code -> noreply (includeIf)"
+}
+
+# ============================================================
 # CLI IA via npm
 # ============================================================
 

@@ -59,6 +59,9 @@ Le script fait, dans l'ordre :
     qui reste manuelle. `core.editor = idea --wait` (IntelliJ). Puis
     `configure_gitignore_global()` cree `~/.gitignore_global` (pointe par
     `core.excludesfile`) **si absent** : exclusions OS / IDE / build / `.env`.
+    Enfin `configure_git_perso_identity()` pose l'identité perso (noreply GitHub)
+    pour les repos sous `~/code` via `includeIf` (repo public → jamais d'email réel
+    exposé ; les repos pro sous `~/workspace` gardent l'email pro).
 14. **Alias shell** : ajoute `dc` (`docker compose` → Podman) et la fonction
     `mvnw` dans `~/.bashrc` (portage minimal du profil PowerShell)
 15. **Optims hardware** : `thermald` (si CPU Intel) + extensions Flatpak VAAPI
