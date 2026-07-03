@@ -27,7 +27,7 @@ curl -fsSL https://raw.githubusercontent.com/Gdpgt/workstation-setup/main/Notes_
 ### Étape 2 — Lancer le script (utilisateur normal, pas root)
 
 ```bash
-cd ~/code/workstation-setup
+cd ~/code/workstation-setup/Notes_changement_pc_LINUX
 ./setup.sh
 ```
 

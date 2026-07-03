@@ -34,7 +34,7 @@ irm https://raw.githubusercontent.com/Gdpgt/workstation-setup/main/Notes_changem
 ### Étape 3 — Lancer le script (PowerShell USER, pas admin)
 
 ```powershell
-cd ~\code\workstation-setup
+cd ~\code\workstation-setup\Notes_changement_pc_WINDOWS_perso
 .\setup.ps1
 ```
 
