@@ -229,8 +229,9 @@ ALTER USER postgres WITH PASSWORD '<nouveau_mdp>';
 | Loisirs | Stremio | `Stremio.Stremio` |
 | Loisirs | Steam | `Valve.Steam` |
 | Cloud | Dropbox | `Dropbox.Dropbox` |
+| Image/PDF | ImageMagick | `ImageMagick.ImageMagick` |
 
-### Via Scoop (script, buckets `extras` + `java`)
+### Via Scoop (script, buckets `main` + `extras` + `java`)
 
 | Catégorie | Logiciel | Paquet Scoop |
 |---|---|---|
@@ -243,6 +244,16 @@ ALTER USER postgres WITH PASSWORD '<nouveau_mdp>';
 | API | Bruno | `bruno` |
 | BDD | DBeaver | `dbeaver` |
 | VCS | Git | `git` |
+| Image/PDF | Ghostscript | `ghostscript` |
+
+> 💡 **ImageMagick via Winget, Ghostscript via Scoop** — répartition volontaire :
+> - **ImageMagick** est routé par Winget (`ImageMagick.ImageMagick`), **pas** par Scoop :
+>   le paquet Scoop `imagemagick` dépend de `innounp`, dont le manifeste amont (bucket
+>   `main`) pointe encore vers un fichier renommé côté GitHub → **404** à l'install sur
+>   un PC neuf. Winget n'a pas cette dépendance.
+> - **Ghostscript** reste sur Scoop (`ghostscript`, bucket `main`) car Artifex a
+>   **dépublié** son paquet Winget (`ArtifexSoftware.GhostScript` → 404). Le manifeste
+>   Scoop tire l'exe officiel via 7z, **sans** `innounp`.
 
 ### Via npm global (script)
 

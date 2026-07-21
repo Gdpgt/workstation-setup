@@ -80,9 +80,17 @@ $WingetPackages = @(
     'Stremio.Stremio'
     'Valve.Steam'
     'Dropbox.Dropbox'
+    # Outils image/PDF (CLI). ImageMagick est pris ICI (Winget) et PAS via Scoop :
+    # le paquet Scoop 'imagemagick' depend de 'innounp', dont le manifeste amont
+    # (bucket main) pointe vers un fichier renomme cote GitHub -> 404 sur un PC neuf.
+    # Winget n'a pas cette dependance. Ghostscript, lui, reste sur Scoop (cf. plus bas).
+    'ImageMagick.ImageMagick'                # binaire 'magick'/'convert'
 )
 
-$ScoopBuckets = @('extras', 'java')
+# 'main' heberge ghostscript. Normalement auto-ajoute par l'installeur Scoop, mais
+# liste explicitement pour ne pas en dependre (Test-ScoopBucketAdded rend l'ajout
+# idempotent : no-op si deja present).
+$ScoopBuckets = @('main', 'extras', 'java')
 
 $ScoopPackages = @(
     'vscode'
@@ -96,6 +104,10 @@ $ScoopPackages = @(
     'python'
     'bruno'
     'dbeaver'
+    # Ghostscript pris via Scoop (bucket main) car Artifex a DEPUBLIE son paquet
+    # Winget ('ArtifexSoftware.GhostScript' -> 404). Le manifeste Scoop tire l'exe
+    # officiel via 7z, SANS dependance 'innounp' (contrairement a imagemagick).
+    'ghostscript'           # binaire 'gs' / 'gswin64c'
 )
 
 # NB: @anthropic-ai/claude-code a ete RETIRE (2026-06-19). Claude Code est
