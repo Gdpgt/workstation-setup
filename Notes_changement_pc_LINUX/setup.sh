@@ -119,6 +119,10 @@ DNF_PACKAGES=(
     # --- Steam (necessite RPM Fusion nonfree) ---
     'steam'
 
+    # --- Traitement image / PDF (CLI) ---
+    'ImageMagick'                # binaire 'magick' (v7) / 'convert' : manipulation d'images
+    'ghostscript'                # binaire 'gs' : rendu et conversion PostScript / PDF
+
     # --- GNOME utils ---
     'gnome-tweaks'
 )

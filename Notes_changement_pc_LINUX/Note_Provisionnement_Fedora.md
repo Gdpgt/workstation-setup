@@ -714,6 +714,7 @@ home, tu perds ces paquets — pas grave, le script les réinstalle.
 | Containers | `podman`, `podman-compose`, `podman-docker`, `buildah`, `skopeo` |
 | Node.js | `nodejs`, `npm` |
 | Python | `python3`, `python3-pip` |
+| Image/PDF (CLI) | `ImageMagick` (binaire `magick`/`convert`), `ghostscript` (binaire `gs`) |
 | Cloud | `nautilus-dropbox` (tire Dropbox proprement, via RPM Fusion nonfree) + `libappindicator-gtk3` (lib requise pour l'icone systray Dropbox) |
 | Loisirs | `steam` (via RPM Fusion nonfree) |
 | GNOME | `gnome-tweaks`, `gnome-shell-extension-appindicator` (support systray AppIndicator — indispensable pour l'icone Dropbox sous GNOME) |
