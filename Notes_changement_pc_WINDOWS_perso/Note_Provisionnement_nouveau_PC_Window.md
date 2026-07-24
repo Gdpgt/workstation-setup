@@ -243,6 +243,8 @@ ALTER USER postgres WITH PASSWORD '<nouveau_mdp>';
 | Runtime | Python LTS | `python` |
 | API | Bruno | `bruno` |
 | BDD | DBeaver | `dbeaver` |
+| Média | ffmpeg | `ffmpeg` (requis par yt-dlp) |
+| Média | yt-dlp | `yt-dlp` |
 | VCS | Git | `git` |
 | Image/PDF | Ghostscript | `ghostscript` |
 

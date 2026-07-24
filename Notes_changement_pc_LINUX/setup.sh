@@ -125,6 +125,11 @@ DNF_PACKAGES=(
 
     # --- GNOME utils ---
     'gnome-tweaks'
+
+    # --- Media / telechargement ---
+    'yt-dlp'             # CLI de telechargement media (repos Fedora officiels).
+    'ffmpeg-free'        # Requis par yt-dlp (muxing/remux audio/video). Version
+                         #   Fedora officielle, coexiste avec libavcodec-freeworld.
 )
 
 # ---- Flatpak apps (Flathub) ------------------------------------------------

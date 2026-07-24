@@ -108,6 +108,8 @@ $ScoopPackages = @(
     # Winget ('ArtifexSoftware.GhostScript' -> 404). Le manifeste Scoop tire l'exe
     # officiel via 7z, SANS dependance 'innounp' (contrairement a imagemagick).
     'ghostscript'           # binaire 'gs' / 'gswin64c'
+    'ffmpeg'                # Requis par yt-dlp (fusion audio/video).
+    'yt-dlp'                # CLI de telechargement media.
 )
 
 # NB: @anthropic-ai/claude-code a ete RETIRE (2026-06-19). Claude Code est

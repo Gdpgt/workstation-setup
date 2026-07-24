@@ -718,6 +718,7 @@ home, tu perds ces paquets — pas grave, le script les réinstalle.
 | Cloud | `nautilus-dropbox` (tire Dropbox proprement, via RPM Fusion nonfree) + `libappindicator-gtk3` (lib requise pour l'icone systray Dropbox) |
 | Loisirs | `steam` (via RPM Fusion nonfree) |
 | GNOME | `gnome-tweaks`, `gnome-shell-extension-appindicator` (support systray AppIndicator — indispensable pour l'icone Dropbox sous GNOME) |
+| Média | `yt-dlp` (CLI de téléchargement média), `ffmpeg-free` (muxing/remux requis par yt-dlp, coexiste avec `libavcodec-freeworld`) |
 
 > 💡 **Éditeur de texte sur F44** : `gnome-text-editor` (« Text Editor ») est
 > l'éditeur par défaut de GNOME depuis GNOME 42 (mars 2022) et est déjà
