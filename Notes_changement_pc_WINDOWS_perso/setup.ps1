@@ -481,7 +481,7 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
         'color.status'      = 'auto'
         'color.diff'        = 'auto'
         'color.branch'      = 'auto'
-        'core.editor'       = 'C:/Program Files/Notepad++/notepad++.exe'
+        'core.editor'       = "'C:/Program Files/Notepad++/notepad++.exe' -multiInst -notabp -nosession"
         'core.excludesfile' = '~/.gitignore_global'
         'alias.ca'          = 'commit --amend'
         'alias.can'         = 'commit --amend --no-edit'
