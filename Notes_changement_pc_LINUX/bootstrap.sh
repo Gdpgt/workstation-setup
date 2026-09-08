@@ -5,7 +5,7 @@
 # A lancer EN PREMIER sur une machine fraiche, avant setup.sh. Il :
 #   1. installe git (si absent)
 #   2. clone le repo workstation-setup dans ~/code (idempotent)
-#   3. installe Claude Code en NATIF (curl officiel, sans Node, auto-update)
+#   3. installe Claude Code en NATIF (curl officiel, auto-update)
 #   4. affiche les etapes suivantes
 #
 # Recuperation sur PC vierge (le seul fetch manuel) :
@@ -56,7 +56,13 @@ else
     ok "Repo clone : $REPO_DIR"
 fi
 
-# --- 3. Claude Code natif (sans Node, auto-update) ---
+# --- 3. Claude Code natif (auto-update) ---
+# NB: "natif" ne veut PAS dire "sans Node". Le paquet npm installe le MEME
+# binaire natif, tire via une dependance optionnelle par plateforme ; le binaire
+# 'claude' n'invoque pas Node a l'execution. Node ne sert qu'a l'install et aux
+# MAJ. On prefere le natif car c'est le canal recommande par la doc officielle
+# (https://code.claude.com/docs/en/setup) et que ses MAJ ne dependent pas d'un
+# Node >= 22 (exige par le paquet npm depuis la v2.1.198).
 if command -v claude >/dev/null 2>&1; then
     ok "Claude Code deja installe ($(command -v claude))"
 else
