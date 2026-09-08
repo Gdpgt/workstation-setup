@@ -152,6 +152,15 @@ FLATPAK_APPS=(
 # Les versions Temurin exactes sont resolues dynamiquement (derniere de chaque
 # major). Voir install_jdks_via_sdkman().
 SDKMAN_JDK_MAJORS=(17 21 25)
+
+# Alias stables des JDK : ~/.local/share/jdks/<majeure> -> version concrete.
+# IntelliJ, LibreOffice & co enregistrent un chemin FIGE vers le JDK. Declarer
+# '.sdkman/candidates/java/25.0.4-tem' rend leur config invalide des la premiere
+# mise a jour de patch (constate le 2026-09-08 : le seul SDK d'IntelliJ pointait
+# sur une version supprimee). On expose donc un chemin par majeure qui, lui, ne
+# bouge jamais -- c'est CE chemin qu'il faut declarer dans ces outils.
+# configure_jdk_aliases() les pose ici, update-java.sh les tient a jour ensuite.
+JDK_ALIAS_DIR="$HOME/.local/share/jdks"
 SDKMAN_OTHER_CANDIDATES=(
     'maven'
     # 'gradle'
@@ -653,6 +662,39 @@ setup_npm_userspace() {
     # Met a jour le PATH pour la session courante
     export PATH="$HOME/.npm-global/bin:$PATH"
     log_ok "npm configure en user-space"
+}
+
+configure_jdk_aliases() {
+    section "Alias stables des JDK"
+
+    local jdk_dir="$HOME/.sdkman/candidates/java"
+    if [[ ! -d "$jdk_dir" ]]; then
+        log_warn "Aucun JDK SDKMAN sur disque : etape sautee"
+        return
+    fi
+
+    if ! mkdir -p "$JDK_ALIAS_DIR" 2>/dev/null; then
+        log_err "Impossible de creer $JDK_ALIAS_DIR"
+        register_failure "jdk-alias" "$JDK_ALIAS_DIR" "mkdir failed"
+        return
+    fi
+
+    local major latest
+    for major in "${SDKMAN_JDK_MAJORS[@]}"; do
+        # Derniere version installee de cette majeure (tri par version, pas alpha)
+        latest=$(find "$jdk_dir" -maxdepth 1 -mindepth 1 -type d -name "${major}.*-tem" \
+                      -printf '%f\n' 2>/dev/null | sed 's/-tem$//' | sort -V | tail -1)
+        if [[ -z "$latest" ]]; then
+            log_warn "Java ${major} : aucune version installee, alias non pose"
+            continue
+        fi
+        if ln -sfn "$jdk_dir/${latest}-tem" "$JDK_ALIAS_DIR/$major" 2>/dev/null; then
+            log_ok "${JDK_ALIAS_DIR}/${major} -> ${latest}-tem"
+        else
+            log_err "Java ${major} : echec de creation du lien"
+            register_failure "jdk-alias" "java-${major}" "symlink failed"
+        fi
+    done
 }
 
 install_npm_globals() {
@@ -1715,6 +1757,17 @@ print_manual_steps() {
                         la commande 'idea' sera dispo dans le terminal apres
                         ouverture d'un nouveau shell.
 
+  [ ] JDK dans l'IDE  : /!\ IMPORTANT. Dans IntelliJ (Project Structure > SDKs)
+                        et LibreOffice (Outils > Options > Avance), declarer les
+                        JDK via les ALIAS STABLES :
+                          ~/.local/share/jdks/17
+                          ~/.local/share/jdks/21
+                          ~/.local/share/jdks/25
+                        JAMAIS via ~/.sdkman/candidates/java/<version> : ce
+                        chemin contient le numero de patch, donc la config
+                        devient invalide des la premiere MAJ (update-java.sh).
+                        Les alias, eux, sont repointes automatiquement.
+
   [ ] Empreinte       : si capteur present, enroler (interactif) :
                           fprintd-enroll
                         /!\ Capteur ELAN : bug libfprint 'swipe' -> GLISSE lentement
@@ -1831,6 +1884,7 @@ main() {
     install_jetbrains_toolbox
     install_sdkman
     install_jdks_via_sdkman
+    configure_jdk_aliases
     setup_npm_userspace
     install_npm_globals
     install_antigravity_cli
