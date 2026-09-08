@@ -26,6 +26,24 @@ irm https://raw.githubusercontent.com/Gdpgt/workstation-setup/main/Notes_changem
 > public ou sans token GitHub. Le `git clone` interne du bootstrap, lui, passe par
 > tes creds git.
 
+> ⚠️ **Le bootstrap saute l'install si `claude` est déjà dans le PATH**
+> (`bootstrap.ps1:79`), quel que soit son canal d'origine. Le message vert
+> « Claude Code deja installe » ne garantit donc **pas** que tu es en natif : une
+> install npm antérieure suffit à déclencher le skip, sans erreur ni avertissement.
+> Le PC Fedora est tombé exactement dans ce piège (constaté le 2026-09-08).
+>
+> Pour connaître le canal réel — seul moyen fiable :
+> ```powershell
+> claude doctor      # diagnostic en lecture seule, n'ouvre pas de session
+> ```
+> La ligne `Running:` affiche `native`, `npm-global` ou `winget`. Vérifie aussi
+> `Auto-updates:` et `Last update attempt:`.
+>
+> **Pour basculer npm → natif** (facultatif, cf. l'encadré « Via npm global ») :
+> `npm uninstall -g @anthropic-ai/claude-code`, puis
+> `irm https://claude.ai/install.ps1 | iex`. À lancer depuis un terminal normal,
+> pas depuis une session Claude Code (elle se couperait l'herbe sous le pied).
+
 > La voie `irm | iex` s'exécute en mémoire → pas besoin de toucher l'ExecutionPolicy.
 > (Si tu télécharges le fichier `.ps1` pour le lancer, là il faudrait
 > `Set-ExecutionPolicy -Scope Process Bypass`.)
@@ -106,6 +124,16 @@ Le script imprime la checklist détaillée à la fin. En résumé :
       (`Angular.ng-template`). Optionnel : extension Chrome **Angular DevTools**.
       `ng` est posé par le script (npm global).
 - [ ] Git identité (`user.name` + `user.email`) — options et alias déjà posés par le script
+- [ ] **JDK dans IntelliJ** (Project Structure > SDKs) et LibreOffice : déclarer
+      les JDK via l'alias stable de Scoop, **jamais** via un chemin de version :
+      ```
+      %USERPROFILE%\scoop\apps\temurin17-jdk\current
+      %USERPROFILE%\scoop\apps\temurin21-jdk\current
+      %USERPROFILE%\scoop\apps\temurin25-jdk\current
+      ```
+      `current` est une **jonction de répertoire** que Scoop repointe tout seul à
+      chaque `scoop update` — c'est fait pour ça. Un chemin de version
+      (`...\25.0.4-7\`) devient invalide au premier `scoop cleanup`.
 - [ ] Basculer Windows Terminal sur le profil PowerShell 7 (pwsh)
 
 > ℹ️ Le profil PowerShell (posh-git, `mvnw`, `dc`, UTF-8) est désormais **posé
@@ -265,10 +293,23 @@ ALTER USER postgres WITH PASSWORD '<nouveau_mdp>';
   (Scoop `nodejs-lts`), après ouverture d'un nouveau terminal.
 
 > **Claude Code n'est plus installé via npm** (2026-06-19). Il est posé en **natif**
-> par `bootstrap.ps1` (`irm https://claude.ai/install.ps1 | iex`) : pas de dépendance
-> Node, auto-update. Garder aussi le npm créerait deux binaires `claude` dans le PATH
-> → source unique = le natif. Le script retire l'ancien `@anthropic-ai/claude-code`
-> npm s'il traîne.
+> par `bootstrap.ps1` (`irm https://claude.ai/install.ps1 | iex`), avec auto-update.
+> Garder aussi le npm créerait deux binaires `claude` dans le PATH → source unique
+> = le natif. Le script retire l'ancien `@anthropic-ai/claude-code` npm s'il traîne.
+>
+> ⚠️ **Le motif n'est PAS d'éviter Node** (corrigé le 2026-09-08). Le paquet npm
+> installe le **même binaire natif**, tiré via une dépendance optionnelle par
+> plateforme : *« the installed `claude` binary does not itself invoke Node »*
+> ([doc officielle](https://code.claude.com/docs/en/setup)). Node ne sert qu'à
+> l'install et aux MAJ, jamais à l'exécution. Les vraies raisons de préférer le
+> natif : c'est le canal marqué *« Native Install (Recommended) »* par la doc, et
+> ses MAJ ne dépendent pas d'un Node ≥ 22 (exigé par le paquet npm depuis la
+> v2.1.198). Les commentaires « sans Node » de `bootstrap.sh` et `bootstrap.ps1`
+> ont été corrigés le 2026-09-08.
+>
+> 💡 Sur Windows il existe aussi `winget install Anthropic.ClaudeCode`, **non
+> retenu** : les installs WinGet ne s'auto-updatent pas (il faudrait
+> `winget upgrade Anthropic.ClaudeCode` à la main), alors que le natif le fait seul.
 
 ### Via bootstrap (natif)
 
@@ -324,10 +365,19 @@ ALTER USER postgres WITH PASSWORD '<nouveau_mdp>';
 
 ## Maintenance (1× par mois)
 
+> ⚠️ **Contrairement à Fedora, ce rythme mensuel est réellement nécessaire ici.**
+> Sur Fedora, GNOME Software prend en charge dnf + Flatpak + metadata firmware
+> tout seul (cf. la section Maintenance de la note Fedora). Sous Windows il n'y a
+> aucun équivalent : **Windows Update ne met à jour ni les paquets Winget de la
+> source community, ni quoi que ce soit installé par Scoop.** Il ne couvre que
+> l'OS, les drivers et Defender.
+
 ```powershell
 winget upgrade --all
 scoop update *
-npm update -g     # codex ; Claude Code n'est plus ici (natif auto-updaté)
+scoop cleanup *   # supprime les anciennes versions : 'scoop update' les CONSERVE
+npm update -g     # codex, @angular/cli ; Claude Code n'est plus ici (natif auto-updaté)
+                  # /!\ respecte la plage semver d'origine : voir l'avertissement plus bas
 Update-Module     # pour posh-git et autres modules PowerShell
 
 # Antigravity CLI : pas de mise à jour native via npm/winget.
@@ -336,8 +386,60 @@ Update-Module     # pour posh-git et autres modules PowerShell
 # (ou : agy --version, si auto-update intégré, dépend des releases Google)
 ```
 
+> 💡 **Pourquoi `scoop cleanup *`** : `scoop update` **ne supprime pas** l'ancienne
+> version, elle est conservée jusqu'au `cleanup`. Sans lui, chaque JDK (~300 Mo)
+> × 3 majeures × 4 trimestres = ~3,6 Go/an d'anciennes versions, avant même de
+> compter VSCode, IntelliJ et Node. Ajouter `-k` (`scoop cleanup * -k`) vide en
+> plus le cache de téléchargement.
+
+> ⚠️ **`scoop cleanup` est justement le moment où un chemin figé casse.** Tant
+> qu'on ne nettoie pas, une config pointant sur
+> `...\temurin25-jdk\25.0.4-7\` survit aux mises à jour. Au premier `cleanup`,
+> elle devient invalide. D'où l'étape « JDK dans l'IDE » de la checklist : il faut
+> déclarer `...\temurin25-jdk\current`, jamais un chemin de version.
+
+> 💡 **Basculer de majeure Java** (équivalent Windows de `sdk default`) :
+> ```powershell
+> scoop reset temurin21-jdk    # met les shims java/javac sur Temurin 21
+> ```
+> Les trois majeures restent installées côte à côte ; `reset` choisit seulement
+> celle que le PATH expose.
+
+### Qui dépend vraiment de ces commandes ?
+
+| Source | Ne dépend PAS de la commande (updater intégré) | **Dépend de la commande** |
+|---|---|---|
+| **Winget** | Chrome (Google Update), Thunderbird (updater Mozilla), Docker Desktop (notif in-app), Steam, Dropbox, Stremio | Foxit Reader, LibreOffice, PostgreSQL, MySQL, MongoDB Server / Shell / Compass, Notepad++, ImageMagick |
+| **Scoop** | — (Scoop n'a **aucun** mécanisme d'auto-update) | VSCode, IntelliJ IDEA, Maven, Temurin 17/21/25, Node.js, Python, Bruno, DBeaver, Git, ffmpeg, yt-dlp, Ghostscript |
+| **npm / PowerShellGet** | — | `@openai/codex`, `@angular/cli`, `posh-git` |
+
+> ⚠️ **VSCode et IntelliJ via Scoop** : ce sont des installs *portables*. Leur
+> auto-updater intégré est neutralisé — ils ne bougent que via `scoop update *`.
+> C'est la différence majeure avec Fedora, où VSCode vient d'un repo dnf tiers et
+> monte donc tout seul avec le reste du système.
+
+> 💡 **`yt-dlp` mérite mieux que du mensuel** : il casse dès que YouTube change
+> son extracteur. En cas d'erreur de DL, réflexe : `scoop update yt-dlp`.
+
+> 💡 **PowerShell 7** (`Microsoft.PowerShell`) est le cas limite : il peut
+> remonter via Windows Update, mais seulement si l'option « Recevoir des mises à
+> jour pour d'autres produits Microsoft » est activée. Sinon c'est `winget`.
+
+> ⚠️ **`npm update -g` respecte la plage semver de l'install d'origine** et peut
+> donc ne pas atteindre la dernière version. Sans conséquence pour `codex` et
+> `@angular/cli`. Mais **si Claude Code s'avère installé via npm** malgré ce que
+> dit cette note (à vérifier avec `claude doctor`, cf. Étape 2), la doc officielle
+> déconseille explicitement cette commande pour lui : forcer avec
+> `npm install -g @anthropic-ai/claude-code@latest`, jamais `npm update -g`.
+
 Pour Antigravity 2.0 / Antigravity IDE, Marvin, Freedom, Mem.ai : attendre la
 notif d'auto-MAJ de chaque app. **Claude Code** (natif) s'auto-update aussi.
+
+### Firmware / BIOS
+
+Pas d'équivalent `fwupdmgr` : la MAJ passe soit par **Windows Update** (beaucoup
+d'OEM y publient leur firmware), soit par l'outil constructeur (MyASUS, Dell
+Update…). Rien à scripter, mais voir l'avertissement BitLocker juste en dessous.
 
 > ⚠️ Avant une MAJ firmware connue, si BitLocker TPM+PIN est actif :
 > `Suspend-BitLocker -RebootCount 1` (évite l'écran de récupération au reboot).
@@ -365,6 +467,40 @@ de wipe.
 ---
 
 ## Changelog du script
+
+- **2026-09-08** — Maintenance : `scoop cleanup`, alias JDK, et corrections Claude Code.
+  - **`scoop cleanup *` ajouté au bloc trimestriel.** `scoop update` **conserve**
+    les anciennes versions jusqu'au `cleanup` — ~3,6 Go/an rien qu'en JDK
+    (300 Mo × 3 majeures × 4 trimestres). Aucun script à modifier : c'est une
+    commande de maintenance, pas de provisioning.
+  - **Étape « JDK dans l'IDE » ajoutée à la checklist.** Déclarer les JDK via
+    `%USERPROFILE%\scoop\apps\temurin<major>-jdk\current`, jamais via un chemin
+    de version. `current` est une **jonction de répertoire** que Scoop repointe
+    automatiquement à chaque update (c'est sa raison d'être documentée). Un chemin
+    figé survit aux `scoop update` mais casse au premier `scoop cleanup` — d'où
+    l'ordre : documenter l'alias **en même temps** qu'on introduit le cleanup.
+    C'est le pendant Windows du problème rencontré sur Fedora le même jour, où
+    IntelliJ pointait sur un `.sdkman/candidates/java/25.0.3-tem` supprimé.
+  - **`setup.ps1` inchangé** : contrairement à `setup.sh` (qui a dû recevoir
+    `configure_jdk_aliases()`), Scoop fournit déjà l'alias stable nativement.
+    De même, les paquets `temurin{17,21,25}-jdk` étant distincts et verrouillés
+    sur leur majeure, `scoop update *` ne peut pas sauter de 25 à 26 — la garantie
+    codée à la main dans `update-java.sh` côté Fedora est ici gratuite.
+  - **`scoop reset temurin<major>-jdk`** documenté comme équivalent Windows de
+    `sdk default` pour choisir la majeure exposée par le PATH.
+  - **Claude Code** : le motif « natif = pas de dépendance Node » était faux — le
+    paquet npm installe le **même binaire natif**, Node ne sert qu'à l'install et
+    aux MAJ. Corrigé dans la note et dans les commentaires de `bootstrap.ps1`.
+    Documenté aussi le **skip silencieux de `bootstrap.ps1:79`** : si un `claude`
+    est déjà dans le PATH, le bootstrap affiche un succès et saute l'install
+    native, quel que soit le canal d'origine → vérifier avec `claude doctor`.
+    `winget install Anthropic.ClaudeCode` existe mais reste écarté : les installs
+    WinGet ne s'auto-updatent pas.
+  - **Section Maintenance enrichie** : tableau distinguant, par source, ce qui a un
+    updater intégré (Chrome, Thunderbird, Docker, Steam, Dropbox, Stremio) de ce
+    qui dépend réellement de la commande. Rappel que VSCode et IntelliJ installés
+    via Scoop sont des installs *portables* dont l'updater intégré ne prend pas le
+    relais. Le rythme mensuel reste justifié ici, contrairement à Fedora.
 
 - **2026-06-20** — Création de `~/.gitignore_global` :
   - **Nouveau** : section ajoutée juste après la config Git (hors du `if (Get-Command

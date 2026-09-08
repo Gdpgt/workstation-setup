@@ -20,6 +20,25 @@ curl -fsSL https://raw.githubusercontent.com/Gdpgt/workstation-setup/main/Notes_
 > public ou sans token GitHub. Le `git clone` interne du bootstrap, lui, passe par
 > tes creds git.
 
+> ⚠️ **Le bootstrap saute l'install si `claude` est déjà dans le PATH**
+> (`bootstrap.sh:66`), quel que soit son canal d'origine. Le message vert
+> « Claude Code deja installe » ne garantit donc **pas** que tu es en natif : une
+> install npm antérieure suffit à déclencher le skip, sans erreur ni avertissement,
+> exit code 0.
+>
+> Pour connaître le canal réel — seul moyen fiable :
+> ```bash
+> claude doctor      # diagnostic en lecture seule, n'ouvre pas de session
+> ```
+> La ligne `Running:` affiche `native` ou `npm-global`. Vérifie aussi
+> `Auto-updates:` et `Last update attempt:`.
+>
+> **Pour basculer npm → natif** (facultatif, cf. l'encadré « Via npm global ») :
+> `npm uninstall -g @anthropic-ai/claude-code`, puis
+> `curl -fsSL https://claude.ai/install.sh | bash`. À lancer depuis un terminal
+> normal, pas depuis une session Claude Code (elle se couperait l'herbe sous le
+> pied).
+
 > Voir aussi la section « Provisionner avec Claude Code » plus bas. Le chiffrement
 > LUKS du disque, lui, se choisit **à l'installation de Fedora** (Anaconda, case
 > « Chiffrer mes données ») — un script post-install ne peut pas chiffrer après coup.
@@ -48,9 +67,12 @@ Le script fait, dans l'ordre :
 7. **Flathub + apps Flatpak** : Bruno, Stremio, MongoDB Compass, DBeaver, GIMP,
    Amberol (lecteur audio minimaliste, boucle une piste)
 8. **JetBrains Toolbox** : install native via tarball officiel (gère ensuite IDEA Community, DataGrip, etc.)
-9. **SDKMAN + JDKs Temurin** (17, 21, 25) + Maven
+9. **SDKMAN + JDKs Temurin** (17, 21, 25) + Maven, puis
+   `configure_jdk_aliases()` qui pose les **alias stables**
+   `~/.local/share/jdks/{17,21,25}` → à déclarer dans IntelliJ / LibreOffice
 10. **npm en user-space** + CLI IA npm (`codex`) + Angular CLI (`@angular/cli` → `ng`).
-    Claude Code = **natif** (bootstrap), plus via npm ; le script retire l'ancien npm orphelin s'il traîne.
+    Claude Code = **natif** (bootstrap), plus via npm ; le script retire l'ancien npm
+    orphelin s'il traîne (voir l'encadré dédié dans « Via npm global »).
 11. **Antigravity CLI** : install via curl (remplace Gemini CLI, deadline 18 juin 2026)
 12. **Services systemd** : init + enable de PostgreSQL, MariaDB, MongoDB ;
     socket Podman rootless + `DOCKER_HOST` dans `.bashrc`
@@ -100,6 +122,11 @@ Le script imprime la checklist détaillée à la fin. En résumé :
 - [ ] **PostgreSQL** : définir le mot de passe `postgres` et passer `pg_hba.conf` en `scram-sha-256`
 - [ ] **MariaDB** : lancer `sudo mariadb-secure-installation`
 - [ ] **MongoDB** : par défaut bind 127.0.0.1 sans auth, à durcir si besoin
+- [ ] **JDK dans IntelliJ / LibreOffice** : déclarer les JDK via les **alias
+      stables** `~/.local/share/jdks/{17,21,25}`, **jamais** via
+      `~/.sdkman/candidates/java/<version>` (chemin figé → invalide dès la
+      première MAJ de patch). Les alias sont posés par `setup.sh` et repointés
+      par `update-java.sh`.
 - [ ] **Antigravity IDE** : install manuelle (en attendant le nouveau package, cf. section dédiée plus bas)
 - [ ] Marvin, Freedom, Mem.ai (Linux : AppImage / Electron / web)
 - [ ] Git identité (`user.name` + `user.email`) — options et alias sont déjà posés par le script
@@ -769,10 +796,19 @@ home, tu perds ces paquets — pas grave, le script les réinstalle.
   (`~/.npm-global/bin`), donc `ng` est sur le PATH après reload du shell.
 
 > **Claude Code n'est plus installé via npm** (2026-06-19). Il est posé en **natif**
-> par `bootstrap.sh` (`curl -fsSL https://claude.ai/install.sh | bash`) : pas de
-> dépendance Node, auto-update intégré. Garder aussi le npm créerait deux binaires
-> `claude` dans le PATH → source unique = le natif. `install_npm_globals()` retire
-> l'ancien `@anthropic-ai/claude-code` npm s'il traîne (machines déjà provisionnées).
+> par `bootstrap.sh` (`curl -fsSL https://claude.ai/install.sh | bash`), avec
+> auto-update intégré. Garder aussi le npm créerait deux binaires `claude` dans le
+> PATH → source unique = le natif. `install_npm_globals()` retire l'ancien
+> `@anthropic-ai/claude-code` npm s'il traîne (machines déjà provisionnées).
+>
+> ⚠️ **Le motif n'est PAS d'éviter Node** (corrigé le 2026-09-08). Le paquet npm
+> installe le **même binaire natif**, tiré via une dépendance optionnelle par
+> plateforme : *« the installed `claude` binary does not itself invoke Node »*
+> ([doc officielle](https://code.claude.com/docs/en/setup)). Node ne sert qu'à
+> l'install et aux MAJ, jamais à l'exécution. Les vraies raisons de préférer le
+> natif : c'est le canal marqué *« Native Install (Recommended) »* par la doc, et
+> ses MAJ ne dépendent pas d'un Node ≥ 22 (exigé par le paquet npm depuis la
+> v2.1.198).
 
 > ⚠️ **`@google/gemini-cli` a été retiré** suite à Google I/O 2026 (19 mai 2026).
 > Gemini CLI est déprécié pour les comptes consumer (Google AI Pro/Ultra +
@@ -825,42 +861,91 @@ home, tu perds ces paquets — pas grave, le script les réinstalle.
   Docker engine pour 99% des cas, plus sûr (rootless), plus simple
   (daemon-less). `podman-docker` rend la transition transparente.
 
-## Maintenance (1× par mois)
+## Maintenance
+
+Sur Fedora Workstation, **presque tout est automatique** : `gnome-software.service`
+démarre à chaque ouverture de session et prend en charge dnf (repos tiers inclus),
+Flatpak et les metadata firmware. Il ne reste que trois gestes manuels.
+
+### 1. À chaque notification (~1×/semaine) — accepter le redémarrage
+
+C'est le **seul geste obligatoire**. Les MAJ RPM sont téléchargées automatiquement
+mais appliquées lors d'un redémarrage dédié (~1 min). Tant qu'on ne redémarre pas,
+elles restent en attente.
+
+→ Donc **ne PAS lancer** `sudo dnf upgrade --refresh`, `flatpak update` ni
+`sudo fwupdmgr refresh` : redondant.
+
+### 2. 1× par trimestre — les gestionnaires user-space
+
+Rien ne les automatise. Depuis `~/code/workstation-setup/Notes_changement_pc_LINUX` :
 
 ```bash
-# Système + repos tiers
-sudo dnf upgrade --refresh
+./update-java.sh            # dry-run : montre ce qui serait fait
+./update-java.sh --apply    # applique
 
-# Flatpak (incluant runtimes)
-flatpak update
-
-# SDKMAN (lui-meme + candidats)
-sdk selfupdate
-sdk update                  # met a jour la liste des versions dispo
-# Pour passer a une nouvelle Temurin :
-#   sdk list java | grep tem
-#   sdk install java <nouvelle>
-#   sdk default java <nouvelle>
-
-# npm (codex ; Claude Code n'est plus ici -> natif auto-updaté)
-npm update -g
-
-# pipx (gnome-extensions-cli)
-pipx upgrade-all
-
-# Extensions GNOME (toutes celles installées via gext)
-gext update
-
-# Firmware (BIOS, microcode, etc. — sources LVFS)
-sudo fwupdmgr refresh && sudo fwupdmgr update
+npm update -g               # codex, @angular/cli
 ```
 
-Pour Antigravity IDE, Marvin, Freedom, Mem.ai : MAJ via l'app elle-même
-(auto-update intégré). **Claude Code** (natif) s'auto-update aussi en arrière-plan.
+`update-java.sh` passe chaque majeure Java installée à son dernier update, purge
+les anciennes, et met à jour les alias `~/.local/share/jdks/{17,21,25}`. Il ne
+change **jamais** de majeure tout seul.
 
-> ⚠️ **Après une MAJ firmware**, si la liaison LUKS+TPM est active (PCR 0+7), le
-> boot redemandera la passphrase → ré-enrôler le TPM (cf. section « Biométrie +
-> déverrouillage TPM »).
+Conditionnel, seulement si `setup.sh` les a posés :
+
+```bash
+command -v pipx && pipx upgrade-all   # gnome-extensions-cli
+command -v gext && gext update        # extensions GNOME installées via gext
+```
+
+### 3. Ponctuel — firmware, quand il y en a
+
+Pas au calendrier. GNOME Software les liste mais ne les pose jamais sans accord.
+
+```bash
+fwupdmgr get-updates      # "No updates available" -> rien à faire
+sudo fwupdmgr update      # peut demander un reboot
+```
+
+⚠️ **Disque chiffré LUKS.** Si le déverrouillage TPM est actif (PCR 0+7), une MAJ
+du BIOS le casse : le boot redemandera la passphrase, puis il faudra ré-enrôler le
+TPM (section « Biométrie + déverrouillage TPM »). Rien n'est perdu, le keyslot
+passphrase reste. Test : si tu tapes une **longue passphrase** au démarrage, le TPM
+n'est pas enrôlé et ça ne te concerne pas.
+
+### Rien à faire — auto-update intégré
+
+JetBrains Toolbox et ses IDE, Antigravity IDE, Marvin, Freedom, Mem.ai, Claude Code.
+
+### Vérifier que l'automatique tourne bien (en cas de doute)
+
+```bash
+dnf history list | head       # transactions 'dnf5daemon-server' = MAJ auto
+flatpak history | tail -20    # 'deploy update' récents
+ls -l /var/lib/fwupd/metadata/lvfs/firmware.xml.zst
+claude doctor                 # canal d'install + auto-update
+```
+
+⚠️ Les dates de `dnf history` sont en **UTC**, le journal système en heure locale
+(CEST = UTC+2). La même MAJ apparaît à deux heures différentes.
+
+### Pièges à connaître (lecture unique, pas une action)
+
+- **Ne jamais lancer `sdk upgrade`** : il installe le défaut *béni par SDKMAN en
+  amont* — pas la plus récente — et le passe en défaut sans confirmation. Le jour
+  où SDKMAN bénira une nouvelle majeure, il te ferait changer de majeure.
+- **`sdk install java <X>` repointe silencieusement le défaut sur `<X>`**, à cause
+  de `sdkman_auto_answer=true` (`sdkman-install.sh:39-47`). Après une install
+  manuelle, vérifier `java -version`. `update-java.sh` neutralise ce piège.
+- **Déclarer les JDK dans IntelliJ / LibreOffice via les alias**
+  `~/.local/share/jdks/{17,21,25}`, jamais via `.sdkman/candidates/java/<version>` :
+  un chemin figé devient invalide à chaque mise à jour de patch.
+- **`sdk selfupdate` répond `Invalid command`** ici (`sdkman_selfupdate_feature=false`).
+  **`sdk update`** ne rafraîchit que le cache des *noms* de candidats, pas les
+  versions : inutile pour les JDK, à garder pour le dépannage.
+- **`npm update -g`** respecte la plage semver d'origine. Sans effet sur Claude
+  Code, qui s'auto-update. Pour le forcer un jour :
+  `npm install -g @anthropic-ai/claude-code@latest`, jamais `npm update -g`.
 
 ## Avant de quitter ce PC (migration future)
 
@@ -909,6 +994,51 @@ différente (`--add-repo` au lieu de `addrepo`). À adapter si besoin.
 ---
 
 ## Changelog du script
+
+- **2026-09-08** — Maintenance : constat que l'essentiel est automatique + nouveau
+  `update-java.sh`.
+  - **Section « Maintenance » réécrite.** Constat vérifié sur la machine :
+    `gnome-software.service` applique déjà les MAJ dnf (**repos tiers inclus** :
+    Chrome, VSCode, MongoDB), les Flatpaks (`--user` **et** `--system`) et rafraîchit
+    les metadata LVFS — alors même que `fwupd-refresh.timer` est `disabled`. Les
+    trois commandes `dnf upgrade --refresh` / `flatpak update` / `fwupdmgr refresh`
+    étaient donc redondantes. Le seul geste requis est d'accepter le redémarrage
+    (les MAJ RPM passent par `system-update.target`, jamais à chaud). Rythme réel :
+    trimestriel, pas mensuel.
+  - **Nouveau `update-java.sh`** : passe chaque majeure Java installée à son dernier
+    *update release*, purge les versions obsolètes, et maintient des **alias stables**
+    `~/.local/share/jdks/{17,21,25}`. Ne change jamais de majeure tout seul. Dry-run
+    par défaut, `--apply` pour écrire. Remplace le bloc `sdk list java | grep tem`,
+    trop flou (on ne savait ni quand agir ni quoi saisir).
+  - **Deux pièges SDKMAN neutralisés dans le script** : (1) `sdk` est une fonction
+    shell qui lit `$USE` et `$ZSH_VERSION` sans les définir → sous `set -u` le
+    processus entier meurt, même depuis un `if ! sdk install` → wrapper `sdk_safe()` ;
+    (2) `sdkman_auto_answer=true` fait que **tout `sdk install java <X>` repointe
+    silencieusement le défaut sur `<X>`**, y compris à travers une majeure → le
+    script repositionne explicitement le défaut sur la majeure d'origine en fin de
+    run. Constaté en direct : sans ce correctif, mettre à jour 17 et 21 laissait la
+    machine sous Java 21.
+  - **`setup.sh` pose desormais les alias** (`configure_jdk_aliases()`, appelée
+    après `install_jdks_via_sdkman`) : sans ça, un PC neuf n'aurait aucun alias
+    avant le premier `update-java.sh` trimestriel, et l'IDE serait naturellement
+    configuré sur un chemin figé → le problème se reproduirait. Fonction
+    autonome (pas d'appel réseau, ne peut pas faire échouer le provisioning).
+    Étape correspondante ajoutée à `print_manual_steps()`.
+  - **Alias stables** : IntelliJ (`jdk.table.xml`) et LibreOffice
+    (`javasettings_Linux_X86_64.xml`, y compris le blob `vendorData` encodé en
+    UTF-16LE) pointaient sur `.../java/25.0.3-tem` en dur → toute MAJ de patch
+    invalidait le SDK. Repointés sur `~/.local/share/jdks/25`.
+  - **Corrections factuelles** : `sdk selfupdate` répond `Invalid command` tant que
+    `sdkman_selfupdate_feature=false` ; `sdk update` ne cache que les *noms* de
+    candidats, pas les versions ; `sdk upgrade` installe le **défaut amont** (pas la
+    plus récente) sans confirmation → à ne jamais lancer.
+  - **Claude Code** : le motif « natif = pas de dépendance Node » était faux — le
+    paquet npm installe le **même binaire natif**, Node ne sert qu'à l'install et aux
+    MAJ. Corrigé dans la note et dans les commentaires de `bootstrap.sh` /
+    `bootstrap.ps1`. Documenté aussi le **skip silencieux de `bootstrap.sh:66`** :
+    si un `claude` est déjà dans le PATH, le bootstrap affiche un succès vert et
+    saute l'install native, quel que soit le canal d'origine → vérifier avec
+    `claude doctor` (cette machine tourne en `npm-global`, pas en natif).
 
 - **2026-06-20** — Création de `~/.gitignore_global` :
   - **Nouveau** : `configure_gitignore_global()` (appelée dans `main()` juste après
