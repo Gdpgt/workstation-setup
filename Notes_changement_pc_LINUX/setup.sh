@@ -1078,7 +1078,7 @@ configure_git_perso_identity() {
     # Fichier d'identite perso, inclus conditionnellement ci-dessous. 'git config
     # --file' cree/met a jour ces 2 cles sans toucher au reste du fichier.
     git config --file "$perso_file" user.name  "Guillaume de Puget"
-    git config --file "$perso_file" user.email "142890016+Gdpgt@users.noreply.github.com"
+    git config --file "$perso_file" user.email "contact@guillaumedepuget.fr"
 
     # includeIf : tout repo dont le .git est sous ~/code/ utilise l'identite perso.
     git config --global "includeIf.gitdir:~/code/.path" "~/.gitconfig-perso"

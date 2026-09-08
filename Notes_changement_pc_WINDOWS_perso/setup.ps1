@@ -610,7 +610,7 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     $persoFile = Join-Path $HOME '.gitconfig-perso'
     # 'git config --file' cree/met a jour ces 2 cles sans toucher au reste.
     git config --file $persoFile user.name  "Guillaume de Puget"
-    git config --file $persoFile user.email "142890016+Gdpgt@users.noreply.github.com"
+    git config --file $persoFile user.email "contact@guillaumedepuget.fr"
     # gitdir/i : matching insensible a la casse (chemins Windows).
     git config --global 'includeIf.gitdir/i:~/code/.path' '~/.gitconfig-perso'
     Write-Ok "Repos sous ~/code -> noreply (includeIf)"
