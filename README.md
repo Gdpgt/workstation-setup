@@ -21,5 +21,8 @@ dans l'étape bootstrap de chaque Note** (liens ci-dessus).
 
 - **Procédure Linux** → [Note_Provisionnement_Fedora.md](Notes_changement_pc_LINUX/Note_Provisionnement_Fedora.md)
 - **Procédure Windows** → [Note_Provisionnement_nouveau_PC_Window.md](Notes_changement_pc_WINDOWS_perso/Note_Provisionnement_nouveau_PC_Window.md)
-- **Dépannage matériel Linux** (gel de veille, WiFi, OLED…) → sections « ⚠️ Cas particulier »
+- **Dépannage matériel Linux** (gel de veille, capot fermé, WiFi, OLED…) → sections
+  « ⚠️ Cas particulier » de la Note Fedora.
+- **Piège systemd** (directive hors section = ignorée en silence, et comment vérifier l'état
+  effectif d'un démon) → [section dédiée](Notes_changement_pc_LINUX/Note_Provisionnement_Fedora.md#-piège-systemd--une-directive-hors-section-est-ignorée-en-silence)
   de la Note Fedora.

@@ -415,6 +415,128 @@ sudo grubby --update-kernel=ALL --remove-args="i915.enable_guc=0"
 **Plan B** si le gel persiste : `i915.enable_dc=0` (désactive les états basse
 conso de l'affichage), l'autre suspect classique des resume `s2idle`.
 
+## ⚠️ Cas particulier : Capot fermé + secteur → garder la machine éveillée
+
+**Objectif** : laisser une session Claude Code CLI joignable en remote-control
+la nuit (`/remote-control` avant de quitter le PC), pour reprendre la
+conversation le lendemain depuis `claude.ai/code` sur une autre machine.
+Verrouiller avec Super+L puis rabattre le capot doit **verrouiller sans
+suspendre**.
+
+**Symptôme** : le lendemain, `claude.ai/code` affiche la machine **hors ligne**.
+En veille `s2idle` tout est gelé — plus de Wi-Fi, plus de process : la CLI ne
+peut plus tenir son websocket.
+
+**Les trois couches à ne pas confondre**
+
+| Couche | Réglage | Où |
+|---|---|---|
+| Veille par **inactivité** | `sleep-inactive-ac-type` = `'nothing'` | GNOME / `gsettings` |
+| Veille au **capot** | `HandleLidSwitchExternalPower` | **logind** (pas GNOME) |
+| Veille au **bouton power** | `HandlePowerKey` | logind |
+
+Désactiver la veille par inactivité dans Paramètres → Alimentation **ne touche
+pas au capot**. C'est le piège : le capot est géré par `systemd-logind`.
+
+> **Aucun réglage GUI pour le capot.** GNOME a retiré l'option de Paramètres, et
+> la bascule « Suspendre lorsque le capot est fermé » a disparu de GNOME Tweaks
+> quand la gestion du capot a été déléguée à logind. La clé dconf historique
+> `org.gnome.settings-daemon.plugins.power lid-close-ac-action` **n'existe plus**
+> (un `gsettings get` revient vide). Le seul point de contrôle est logind.
+
+**Solution** — drop-in `/etc/systemd/logind.conf.d/99-lid-branche.conf` :
+
+```bash
+sudo mkdir -p /etc/systemd/logind.conf.d
+cat <<'EOF' | sudo tee /etc/systemd/logind.conf.d/99-lid-branche.conf >/dev/null
+[Login]
+HandleLidSwitchExternalPower=ignore
+EOF
+# puis reboot
+```
+
+- On cible **`HandleLidSwitchExternalPower`**, pas `HandleLidSwitch` : branché →
+  reste éveillé ; **sur batterie**, `HandleLidSwitch` garde son défaut
+  (`suspend`), donc capot fermé dans le sac = veille normale, batterie préservée.
+- Un **drop-in**, pas une édition de `/etc/systemd/logind.conf` : le paquet
+  `systemd` possède ce chemin mais n'y met aucun contenu (fichier `%ghost` —
+  il existe à 0 octet sur le disque). Le drop-in survit aux mises à jour.
+- `systemd-logind` n'a pas d'`ExecReload` : un `systemctl restart systemd-logind`
+  sur une session GNOME vivante est risqué. **Rebooter.**
+
+**Vérifier** — après reboot, interroger l'état *effectif* (pas le fichier) :
+
+```bash
+busctl get-property org.freedesktop.login1 /org/freedesktop/login1 \
+  org.freedesktop.login1.Manager HandleLidSwitchExternalPower
+# Attendu : s "ignore"
+
+# Confirmation comportementale : fermer le capot branché, puis
+journalctl -b 0 | grep -iE "Lid closed|PM: suspend entry"
+# Attendu : "Lid closed." SANS "PM: suspend entry" derriere.
+```
+
+**Annuler** : `sudo rm /etc/systemd/logind.conf.d/99-lid-branche.conf` + reboot.
+
+**Contreparties**
+
+- **Thermique** : capot fermé sans veille toute la nuit. À l'idle ça passe, mais
+  si une tâche tourne (build, agent Claude), la dissipation capot fermé est
+  mauvaise — ne pas poser la machine sur du tissu.
+- **Dock / écran externe** : il existe un 3ᵉ réglage, `HandleLidSwitchDocked`
+  (défaut `ignore`), qui **prend le pas** sur les deux autres dès que la machine
+  est dockée **ou qu'au moins un second écran est branché**. Son défaut donne le
+  même résultat que ce qu'on veut ici, donc rien à faire — mais si le capot se
+  remet un jour à suspendre avec un écran externe, c'est cette clé-là qu'il faut
+  regarder, pas `HandleLidSwitchExternalPower`.
+- Sur ce Zenbook, effet de bord bienvenu : plus de veille branché = plus de
+  réveil foireux (voir la section *Gel au réveil de veille* ci-dessus).
+
+## ⚠️ Piège systemd : une directive hors section est ignorée en silence
+
+**La règle** : dans un fichier de conf systemd, toute directive placée **avant un
+en-tête de section** (`[Login]`, `[Service]`, `[Resolve]`…) est **ignorée**. Pas
+d'erreur au démarrage, pas de message visible, aucun retour : le démon applique
+ses valeurs par défaut comme si le fichier était vide.
+
+Cas réel sur cette machine — `/etc/systemd/logind.conf` contenait :
+
+```ini
+HandlePowerKey=suspend
+HandleLidSwitch=ignore
+```
+
+… sans `[Login]`. Résultat : **plus de 3 mois** de capot qui suspend malgré la
+conf (première trace le 29/05/2026, à la minute où le fichier a été écrit), et
+deux matins à chercher pourquoi la machine était hors ligne.
+
+**La méthode qui trouve ce genre de bug** : ne jamais faire confiance au fichier,
+toujours comparer la **config déclarée** à l'**état effectif**.
+
+```bash
+# 1. Config déclarée (fichier principal + drop-ins fusionnés)
+systemd-analyze cat-config systemd/logind.conf
+#    Ne pas s'alarmer du "# Main configuration file systemd/logind.conf not
+#    found" en tete : le fichier existe bien, il est juste vide (ghost).
+
+# 2. Etat EFFECTIF vu par le demon lui-meme
+busctl get-property org.freedesktop.login1 /org/freedesktop/login1 \
+  org.freedesktop.login1.Manager HandleLidSwitch
+# (pour une unite classique : systemctl show <unite> -p <Propriete>)
+
+# 3. Si les deux divergent -> chercher la plainte du parseur au boot
+journalctl -b -u systemd-logind | grep -iE "assignment|section|ignoring"
+# -> "/etc/systemd/logind.conf:1: Assignment outside of section. Ignoring."
+```
+
+Si ça diverge, deux hypothèses seulement : le fichier n'a pas été relu depuis
+l'édition (comparer son `mtime` à `systemctl show <unite> -p ActiveEnterTimestamp`),
+ou il n'est pas parsé (étape 3).
+
+> 💡 Vaut pour tous les `*.conf` systemd : `logind.conf`, `resolved.conf`,
+> `journald.conf`, `timesyncd.conf`, les units… Un drop-in dans `*.conf.d/` a
+> **aussi** besoin de son en-tête de section.
+
 ## ⚠️ Cas particulier : WiFi qui se coupe ~5s à intervalle régulier (Intel iwlwifi + multi-BSSID box)
 
 **Symptôme** : la connexion WiFi du PC tombe pendant 4-10 secondes toutes les
