@@ -1271,7 +1271,7 @@ install_hardware_packages() {
 # S'appuie sur les flags HAS_* poses par detect_gpu_vendors(). Idempotent.
 
 configure_hardware_optimization() {
-    section "Optimisations hardware (thermald + Flatpak VA-API)"
+    section "Optimisations hardware (thermald + Flatpak VA-API + capot)"
 
     # --- thermald (Intel uniquement) ---
     if grep -q GenuineIntel /proc/cpuinfo 2>/dev/null; then
@@ -1294,6 +1294,65 @@ configure_hardware_optimization() {
         fi
     else
         log_ok "CPU non-Intel : thermald non requis (amd_pstate gere par le noyau)"
+    fi
+
+    # --- Capot ferme + secteur : ne pas suspendre (laptops uniquement) ---
+    #
+    # Objectif : garder une session Claude Code CLI joignable en remote-control
+    # la nuit (Super+L puis capot rabattu = verrouille mais reste eveille), pour
+    # reprendre la conversation le lendemain depuis claude.ai/code.
+    #
+    # On cible HandleLidSwitchExternalPower (secteur) et PAS HandleLidSwitch :
+    # sur batterie le defaut (suspend) reste actif -> capot ferme dans le sac
+    # = veille normale, batterie preservee.
+    #
+    # Drop-in et pas edition de /etc/systemd/logind.conf : ce fichier appartient
+    # au paquet systemd (livre vide) ; le drop-in survit aux MAJ.
+    #
+    # /!\ L en-tete [Login] est OBLIGATOIRE : une directive hors section est
+    # ignoree en SILENCE par systemd (aucune erreur visible, valeurs par defaut
+    # appliquees). Voir "Piege systemd" dans la Note.
+    local is_laptop=0
+    if [[ "$(hostnamectl chassis 2>/dev/null)" == "laptop" ]] \
+        || compgen -G "/sys/class/power_supply/BAT*" >/dev/null 2>&1; then
+        is_laptop=1
+    fi
+
+    if [[ "$is_laptop" -eq 0 ]]; then
+        log_ok "Machine fixe : config capot (lid switch) non requise"
+    else
+        local lid_conf="/etc/systemd/logind.conf.d/99-lid-branche.conf"
+        # Test volontairement souple : on verifie la section ET la directive,
+        # pas le fichier entier. Un drop-in ecrit a la main avec d'autres
+        # commentaires est donc accepte tel quel et jamais reecrit.
+        if [[ -f "$lid_conf" ]] \
+            && grep -q '^\[Login\]' "$lid_conf" 2>/dev/null \
+            && grep -q '^HandleLidSwitchExternalPower=ignore' "$lid_conf" 2>/dev/null; then
+            log_ok "Capot+secteur : deja configure ($lid_conf)"
+        else
+            log_info "Configuration du capot (secteur = pas de veille)..."
+            local log; log=$(new_log_file "systemd_logind_lid")
+            if sudo mkdir -p /etc/systemd/logind.conf.d >>"$log" 2>&1 \
+                && printf '%s\n' \
+                    '# Capot ferme + secteur -> pas de veille : garde une session' \
+                    '# Claude Code CLI joignable en remote-control la nuit.' \
+                    '#' \
+                    '# Sur batterie, HandleLidSwitch garde son defaut (suspend).' \
+                    '# En-tete [Login] obligatoire : hors section = ignore en silence.' \
+                    '' \
+                    '[Login]' \
+                    'HandleLidSwitchExternalPower=ignore' \
+                    | sudo tee "$lid_conf" >/dev/null 2>>"$log"; then
+                log_ok "Capot+secteur configure (effectif au prochain reboot)"
+                log_info "Verifier apres reboot : busctl get-property org.freedesktop.login1 \\"
+                log_info "  /org/freedesktop/login1 org.freedesktop.login1.Manager \\"
+                log_info "  HandleLidSwitchExternalPower   # attendu : s \"ignore\""
+                rm -f "$log"
+            else
+                log_err "Echec ecriture $lid_conf (log : $log)"
+                register_failure "systemd" "logind-lid" "write failed" "$log"
+            fi
+        fi
     fi
 
     # --- Extensions Flatpak VAAPI (selon vendor) ---
