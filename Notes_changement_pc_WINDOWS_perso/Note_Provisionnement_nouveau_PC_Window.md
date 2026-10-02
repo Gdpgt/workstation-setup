@@ -84,6 +84,10 @@ Idempotent : on peut le relancer sans casser quoi que ce soit.
 
 > **Opt-in (PowerShell ADMIN, non lancé par le run normal)** : `.\setup.ps1
 > -EnrollTpm` active BitLocker TPM+PIN (boot par PIN). Cf. section dédiée plus bas.
+>
+> **Opt-in à lancer après le run (PowerShell ADMIN)** : `.\setup.ps1 -HardenDb` passe MySQL,
+> PostgreSQL et MongoDB en démarrage **Manuel** + écoute **localhost**. Le run normal te le
+> rappelle en fin de script tant que des bases démarrent encore automatiquement.
 
 > ⚠️ **UAC** : malgré `--silent`, des prompts UAC vont apparaître pour les apps
 > qui requièrent admin (Docker Desktop, PostgreSQL, MySQL, MongoDB Server).
@@ -114,6 +118,8 @@ et il ne touche pas à ce qui est déjà installé.
 
 Le script imprime la checklist détaillée à la fin. En résumé :
 
+- [ ] **Bases de données (ACTION REQUISE)** : `.\setup.ps1 -HardenDb` en PowerShell ADMIN,
+      puis démarrage à la demande avec `dbstart` / `dbstop` (cf. section dédiée)
 - [ ] Docker Desktop : activer le backend WSL2
 - [ ] PostgreSQL : changer le mot de passe `postgres` par défaut (voir ci-dessous)
 - [ ] MySQL : noter le mot de passe root généré pendant l'install (UAC interactif)
@@ -220,6 +226,34 @@ Ce que ça fait (`Invoke-BitLockerEnroll`, idempotent) :
 > MAJ firmware peut d'ailleurs déclencher l'écran de récupération BitLocker au boot.
 > Bonne pratique avant une MAJ firmware connue : `Suspend-BitLocker -RebootCount 1`.
 > La clé est **affichée**, jamais écrite en clair sur le disque qu'on chiffre.
+
+## ⚠️ Cas particulier : Bases à la demande (`-HardenDb`, `dbstart` / `dbstop`)
+
+winget installe MySQL, PostgreSQL et MongoDB comme services Windows en démarrage
+**Automatic** : ils tournent en permanence. `.\setup.ps1 -HardenDb` (PowerShell **ADMIN**,
+opt-in comme `-EnrollTpm`) :
+
+- détecte les services par le **chemin de l'exécutable** (`mysqld.exe`, `pg_ctl.exe`,
+  `mongod.exe`), pas par le nom (`postgresql-x64-NN`, `MySQL80`/`MySQL96`, MySQL Router…) ;
+- ne modifie la config que si l'écoute n'est pas déjà locale : `bind-address` dans `my.ini`
+  (MySQL écoute sur toutes les interfaces par défaut), `listen_addresses` dans
+  `postgresql.conf`, `net.bindIp` dans `mongod.cfg` (PostgreSQL et MongoDB sont normalement
+  déjà locaux). Sauvegarde `.bak` créée **une seule fois**, écriture UTF-8 sans BOM ;
+- passe le service en **Manual** et l'arrête (la config s'applique donc au prochain démarrage).
+
+Ensuite, dans un **nouveau** PowerShell (profil rechargé) :
+
+```powershell
+dbstart            # les 3 bases      | dbstart pg    | dbstart mysql | dbstart mongo
+dbstop             # idem pour l'arrêt
+```
+
+Démarrer/arrêter un service exige l'admin : hors shell admin, la fonction s'élève
+elle-même → **un prompt UAC par appel**.
+
+> ⚠️ **Non testé sur machine réelle** (écrit depuis Linux). Après le premier usage :
+> `Get-Service` (StartType Manual) et `netstat -ano | findstr "3306 5432 27017"` (→ `127.0.0.1`).
+> Les étapes PostgreSQL / MySQL de cette Note supposent la base démarrée : `dbstart` d'abord.
 
 ## ⚠️ Cas particulier : PostgreSQL
 
@@ -467,6 +501,15 @@ de wipe.
 ---
 
 ## Changelog du script
+
+- **2026-10-02** — Bases de données à la demande (`-HardenDb`, `dbstart` / `dbstop`) :
+  - **Nouveau switch opt-in `-HardenDb`** (PowerShell ADMIN, court-circuité **avant** le refus
+    « pas d'admin », comme `-EnrollTpm`) : services MySQL / PostgreSQL / MongoDB en
+    démarrage Manuel + bind localhost. Détection par chemin d'exécutable.
+  - **Rappel en fin de run** (+ ligne en tête de la checklist) tant que des bases démarrent
+    encore en Automatic.
+  - **Profil PowerShell** : `dbstart` / `dbstop` (auto-élévation UAC hors shell admin).
+  - Non testé sur machine réelle.
 
 - **2026-09-08** — Maintenance : `scoop cleanup`, alias JDK, et corrections Claude Code.
   - **`scoop cleanup *` ajouté au bloc trimestriel.** `scoop update` **conserve**

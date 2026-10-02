@@ -15,6 +15,7 @@
     .\setup.ps1
     .\setup.ps1 -SkipScoop
     .\setup.ps1 -SkipAntigravity
+    .\setup.ps1 -HardenDb      # PowerShell ADMIN : bases en demarrage manuel + localhost
 #>
 
 [CmdletBinding()]
@@ -24,7 +25,8 @@ param(
     [switch]$SkipNpm,
     [switch]$SkipPwshModules,
     [switch]$SkipAntigravity,
-    [switch]$EnrollTpm        # OPT-IN : active BitLocker TPM+PIN (exige ADMIN), puis sort.
+    [switch]$EnrollTpm,       # OPT-IN : active BitLocker TPM+PIN (exige ADMIN), puis sort.
+    [switch]$HardenDb         # OPT-IN : bases (MySQL/PostgreSQL/MongoDB) en demarrage Manuel + bind localhost (exige ADMIN), puis sort.
 )
 
 $ErrorActionPreference = 'Continue'
@@ -301,10 +303,150 @@ function Invoke-BitLockerEnroll {
     Exit-Setup 0
 }
 
-# Court-circuit OPT-IN : si -EnrollTpm, on fait UNIQUEMENT BitLocker puis on sort,
-# AVANT le check "pas d'admin" du provisioning normal (qui ferait exit 1 en admin).
+# ============================================================
+# Bases de donnees : demarrage Manuel + bind localhost (opt-in via -HardenDb)
+# ============================================================
+#
+# winget installe MySQL / PostgreSQL / MongoDB comme services en demarrage
+# Automatic (donc lances a chaque boot). -HardenDb (ADMIN) les passe en Manual,
+# les arrete et force l'ecoute sur localhost. Demarrage ensuite a la demande via
+# 'dbstart' / 'dbstop' (profil PowerShell). Services detectes par le chemin de
+# l'executable (pas par le nom : postgresql-x64-NN, MySQL80/96, MySQL Router...).
+# Les modifs de config ne prennent effet qu'au prochain demarrage (services arretes).
+# NON TESTE sur machine reelle : verifier avec Get-Service / netstat apres usage.
+
+function Get-DbServices {
+    Get-CimInstance Win32_Service | ForEach-Object {
+        $kind = switch -Regex ($_.PathName) {
+            'mysqld\.exe' { 'mysql';    break }
+            'pg_ctl\.exe' { 'postgres'; break }
+            'mongod\.exe' { 'mongo';    break }
+        }
+        if ($kind) { [pscustomobject]@{ Name = $_.Name; Kind = $kind; StartMode = $_.StartMode; PathName = $_.PathName } }
+    }
+}
+
+function Test-LocalAddress {
+    # $true si toutes les adresses (separees par des virgules) sont locales.
+    param([string]$Value)
+    $addrs = $Value -split ',' | ForEach-Object { $_.Trim().Trim("'", '"') } | Where-Object { $_ }
+    if (-not $addrs) { return $false }
+    return -not ($addrs | Where-Object { $_ -notin @('127.0.0.1', 'localhost', '::1') })
+}
+
+function Save-ConfigText {
+    # .bak cree UNE seule fois (ne pas ecraser la sauvegarde d'origine a la relance) ; UTF-8 sans BOM.
+    param([string]$Path, [string]$Text)
+    if (-not (Test-Path "$Path.bak")) { Copy-Item -LiteralPath $Path -Destination "$Path.bak" }
+    [IO.File]::WriteAllText($Path, $Text, (New-Object Text.UTF8Encoding($false)))
+}
+
+function Set-MysqlBindLocal {
+    param([string]$Ini)
+    $text   = [IO.File]::ReadAllText($Ini)
+    $active = '(?im)^[ \t]*bind-address[ \t]*=.*$'
+    $found  = [regex]::Matches($text, $active)
+    if ($found.Count -gt 0) {
+        if (-not ($found | Where-Object { -not (Test-LocalAddress ($_.Value -replace '^.*=', '')) })) {
+            Write-Ok "MySQL : bind-address deja local ($Ini)"; return
+        }
+        $text = [regex]::Replace($text, $active, 'bind-address=127.0.0.1')
+    }
+    elseif ($text -match '(?im)^\[mysqld\]') {
+        $text = [regex]::Replace($text, '(?im)^\[mysqld\][ \t]*(?=\r?$)', "[mysqld]`r`nbind-address=127.0.0.1", 1)
+    }
+    else {
+        Write-Warn "MySQL : pas de section [mysqld] dans $Ini -> bind a regler a la main"; return
+    }
+    Save-ConfigText -Path $Ini -Text $text
+    Write-Ok "MySQL : bind-address=127.0.0.1 ($Ini)"
+}
+
+function Set-PostgresListenLocal {
+    param([string]$Conf)
+    $text = [IO.File]::ReadAllText($Conf)
+    $rx   = "(?im)^[ \t]*listen_addresses[ \t]*=[ \t]*('[^']*'|\S+)"
+    $m    = [regex]::Match($text, $rx)
+    if (-not $m.Success -or (Test-LocalAddress $m.Groups[1].Value)) {
+        Write-Ok "PostgreSQL : listen_addresses deja local (defaut ou explicite)"; return
+    }
+    $text = [regex]::Replace($text, "(?im)^([ \t]*listen_addresses[ \t]*=[ \t]*)('[^']*'|\S+)", "`$1'localhost'")
+    Save-ConfigText -Path $Conf -Text $text
+    Write-Ok "PostgreSQL : listen_addresses='localhost' ($Conf)"
+}
+
+function Set-MongoBindLocal {
+    param([string]$Cfg)
+    $text = [IO.File]::ReadAllText($Cfg)
+    if ($text -match '(?im)^[ \t]*bindIpAll:[ \t]*true') {
+        Write-Warn "MongoDB : bindIpAll: true dans $Cfg -> remplace-le a la main par bindIp: 127.0.0.1"; return
+    }
+    $m = [regex]::Match($text, '(?im)^[ \t]*bindIp:[ \t]*([^#\r\n]*)')
+    if (-not $m.Success -or (Test-LocalAddress $m.Groups[1].Value)) {
+        Write-Ok "MongoDB : bindIp deja local (defaut ou explicite)"; return
+    }
+    $text = [regex]::Replace($text, '(?im)^([ \t]*bindIp:[ \t]*)[^#\r\n]*', '${1}127.0.0.1')
+    Save-ConfigText -Path $Cfg -Text $text
+    Write-Ok "MongoDB : bindIp: 127.0.0.1 ($Cfg)"
+}
+
+function Invoke-DbHarden {
+    Write-Section "Bases de donnees : demarrage Manuel + localhost (opt-in)"
+
+    if (-not (Test-IsAdmin)) {
+        Write-Err "Cette operation exige un PowerShell ADMINISTRATEUR."
+        Write-Err "Relance : clic droit sur PowerShell > 'Executer en tant qu'administrateur',"
+        Write-Err "          puis : .\setup.ps1 -HardenDb"
+        Exit-Setup 1
+    }
+
+    $services = @(Get-DbServices)
+    if ($services.Count -eq 0) {
+        Write-Warn "Aucun service MySQL / PostgreSQL / MongoDB detecte (rien a faire)."
+        Exit-Setup 0
+    }
+
+    foreach ($svc in $services) {
+        Write-Info "$($svc.Kind) : service '$($svc.Name)' (demarrage actuel : $($svc.StartMode))"
+        try {
+            switch ($svc.Kind) {
+                'mysql' {
+                    if ($svc.PathName -match '--defaults-file="?([^"]+?)"?(\s|$)') { Set-MysqlBindLocal -Ini $Matches[1] }
+                    else { Write-Warn "MySQL : --defaults-file introuvable dans le service, bind a regler a la main" }
+                }
+                'postgres' {
+                    if ($svc.PathName -match '-D\s+"([^"]+)"' -or $svc.PathName -match '-D\s+(\S+)') {
+                        Set-PostgresListenLocal -Conf (Join-Path $Matches[1] 'postgresql.conf')
+                    }
+                    else { Write-Warn "PostgreSQL : repertoire de donnees (-D) introuvable, bind a verifier a la main" }
+                }
+                'mongo' {
+                    if ($svc.PathName -match '--config\s+"?([^"]+?\.cfg)"?') { Set-MongoBindLocal -Cfg $Matches[1] }
+                    else { Write-Warn "MongoDB : --config introuvable dans le service, bind a verifier a la main" }
+                }
+            }
+            Set-Service -Name $svc.Name -StartupType Manual -ErrorAction Stop
+            Stop-Service -Name $svc.Name -Force -ErrorAction SilentlyContinue
+            Write-Ok "$($svc.Name) : demarrage Manuel, arrete (lance-le avec : dbstart $($svc.Kind))"
+        }
+        catch {
+            Write-Err "$($svc.Name) : $($_.Exception.Message)"
+            Register-Failure -Type 'db-harden' -Package $svc.Name -Reason $_.Exception.Message
+        }
+    }
+
+    Write-Info "Ouvre un nouveau PowerShell puis : dbstart <pg|mysql|mongo>  /  dbstop"
+    Exit-Setup $(if ($script:Failures.Count -gt 0) { 2 } else { 0 })
+}
+
+# Court-circuit OPT-IN : si -EnrollTpm / -HardenDb, on fait UNIQUEMENT cette operation
+# puis on sort, AVANT le check "pas d'admin" du provisioning normal (qui ferait exit 1
+# en admin).
 if ($EnrollTpm) {
     Invoke-BitLockerEnroll
+}
+if ($HardenDb) {
+    Invoke-DbHarden
 }
 
 # ============================================================
@@ -341,6 +483,8 @@ Write-Ok "winget detecte"
 Write-Warn "Note : des prompts UAC vont apparaitre pendant l'execution"
 Write-Warn "       (Docker Desktop, PostgreSQL, MySQL, MongoDB.Server) malgre --silent."
 Write-Warn "       --silent passe au installer, pas a UAC."
+Write-Warn "Apres le run : les bases demarrent au boot tant que tu n'as pas lance"
+Write-Warn "       '.\setup.ps1 -HardenDb' dans un PowerShell ADMIN (rappel en fin de run)."
 
 # ============================================================
 # Winget
@@ -825,7 +969,25 @@ if (Test-Path $gitBashPath) {
 
 Write-Section "Etapes manuelles restantes"
 
+# Les bases installees par winget demarrent en Automatic : -HardenDb (ADMIN) est
+# un opt-in, donc on previent explicitement tant qu'il n'a pas ete lance.
+$autoDb = @(Get-DbServices | Where-Object StartMode -eq 'Auto')
+if ($autoDb.Count -gt 0) {
+    Write-Warn "ACTION REQUISE : $($autoDb.Count) base(s) demarrent encore automatiquement au boot ($(($autoDb.Name) -join ', '))."
+    Write-Warn "Lance dans un PowerShell ADMIN : .\setup.ps1 -HardenDb"
+    Write-Warn "(demarrage Manuel + ecoute localhost ; ensuite : dbstart / dbstop)"
+}
+
 @"
+
+  [ ] Bases de donnees: (ACTION REQUISE, opt-in) elles demarrent au boot et peuvent
+                        ecouter hors localhost. Depuis un PowerShell ADMIN :
+                          .\setup.ps1 -HardenDb
+                        Ensuite, demarrage a la demande (nouveau PowerShell) :
+                          dbstart [pg|mysql|mongo]   /   dbstop [pg|mysql|mongo]
+                        (un prompt UAC par appel hors shell admin). Les etapes
+                        PostgreSQL / MySQL / MongoDB ci-dessous supposent la base
+                        demarree : lance d'abord dbstart.
 
   [ ] Docker Desktop  : Settings > General > activer le backend WSL2
 
@@ -838,8 +1000,9 @@ Write-Section "Etapes manuelles restantes"
   [ ] MySQL           : noter le mot de passe root genere pendant l'install
                         (UAC interactif, pas vraiment silencieux)
 
-  [ ] MongoDB         : le service MongoDB demarre automatiquement.
-                        Verifier : Get-Service MongoDB
+  [ ] MongoDB         : le service MongoDB demarre automatiquement tant que
+                        -HardenDb n'a pas ete lance (cf. ci-dessus).
+                        Verifier : Get-CimInstance Win32_Service | ? PathName -match mongod
 
   [ ] BitLocker TPM+PIN: (opt-in) boot par PIN. Depuis un PowerShell ADMIN :
                           .\setup.ps1 -EnrollTpm

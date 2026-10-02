@@ -858,6 +858,54 @@ install_antigravity_cli() {
 # ============================================================
 # Services systemd (PostgreSQL, MariaDB, MongoDB) + Podman socket
 # ============================================================
+#
+# Les bases sont installees mais PAS activees au boot : demarrage a la demande
+# via 'dbstart' / 'dbstop' (cf. configure_db_aliases). Aucune etape de ce script
+# n'a besoin d'une base demarree ; si une future etape utilise psql/mongosh,
+# elle devra faire 'systemctl start' elle-meme.
+
+# Retire le demarrage auto d'un service SANS le couper s'il tourne deja
+# (pas de '--now' : on ne tue pas une base en cours d'usage).
+disable_service_autostart() {
+    local svc=$1
+    if ! systemctl is-enabled --quiet "$svc" 2>/dev/null; then
+        log_ok "Service ${svc} : demarrage auto deja desactive"
+        return
+    fi
+    log_info "Desactivation du demarrage auto de ${svc}..."
+    if sudo systemctl disable "$svc" >/dev/null 2>&1; then
+        log_ok "Service ${svc} : demarrage auto desactive"
+    else
+        log_err "systemctl disable ${svc} a echoue"
+        register_failure "systemd" "${svc}.service" "disable failed"
+    fi
+}
+
+# MariaDB ecoute sur toutes les interfaces par defaut (bind-address commente dans
+# mariadb-server.cnf) alors que la zone firewall FedoraWorkstation ouvre
+# 1025-65535 : on force 127.0.0.1. PostgreSQL (listen_addresses=localhost) et
+# MongoDB (bindIp 127.0.0.1) sont deja locaux par defaut.
+configure_mariadb_bind_local() {
+    local conf=/etc/my.cnf.d/99-local.cnf
+    local wanted=$'[mysqld]\nbind-address=127.0.0.1\n'
+
+    if sudo test -f "$conf" && [[ "$(sudo cat "$conf")"$'\n' == "$wanted" ]]; then
+        log_ok "MariaDB : bind 127.0.0.1 deja configure (${conf})"
+        return
+    fi
+
+    log_info "MariaDB : ecriture de ${conf} (bind-address=127.0.0.1)..."
+    if sudo test -f "$conf"; then
+        sudo cp -n "$conf" "${conf}.bak" 2>/dev/null
+        log_warn "${conf} existait avec un autre contenu (sauvegarde : ${conf}.bak)"
+    fi
+    if printf '%s' "$wanted" | sudo tee "$conf" >/dev/null; then
+        log_ok "MariaDB : bind 127.0.0.1 (effectif au prochain demarrage)"
+    else
+        log_err "Ecriture de ${conf} echouee"
+        register_failure "systemd" "mariadb-bind" "write ${conf} failed"
+    fi
+}
 
 configure_services() {
     section "Services systemd"
@@ -884,47 +932,18 @@ configure_services() {
             fi
         fi
 
-        if systemctl is-enabled --quiet postgresql 2>/dev/null; then
-            log_ok "Service postgresql deja active"
-        else
-            log_info "Activation + start de postgresql..."
-            if sudo systemctl enable --now postgresql >/dev/null 2>&1; then
-                log_ok "Service postgresql"
-            else
-                log_err "systemctl enable postgresql a echoue"
-                register_failure "systemd" "postgresql.service" "enable failed"
-            fi
-        fi
+        disable_service_autostart postgresql
     fi
 
     # --- MariaDB ---
     if rpm -q mariadb-server >/dev/null 2>&1; then
-        if systemctl is-enabled --quiet mariadb 2>/dev/null; then
-            log_ok "Service mariadb deja active"
-        else
-            log_info "Activation + start de mariadb..."
-            if sudo systemctl enable --now mariadb >/dev/null 2>&1; then
-                log_ok "Service mariadb"
-            else
-                log_err "systemctl enable mariadb a echoue"
-                register_failure "systemd" "mariadb.service" "enable failed"
-            fi
-        fi
+        configure_mariadb_bind_local
+        disable_service_autostart mariadb
     fi
 
     # --- MongoDB ---
     if rpm -q mongodb-org >/dev/null 2>&1; then
-        if systemctl is-enabled --quiet mongod 2>/dev/null; then
-            log_ok "Service mongod deja active"
-        else
-            log_info "Activation + start de mongod..."
-            if sudo systemctl enable --now mongod >/dev/null 2>&1; then
-                log_ok "Service mongod"
-            else
-                log_err "systemctl enable mongod a echoue"
-                register_failure "systemd" "mongod.service" "enable failed"
-            fi
-        fi
+        disable_service_autostart mongod
     fi
 
     # --- Podman rootless socket (compat docker) ---
@@ -1171,6 +1190,59 @@ mvnw() {
 }
 EOF
     log_ok "Alias shell ajoutes (reload : source ~/.bashrc)"
+}
+
+# 'dbstart' / 'dbstop' : bases a la demande (non activees au boot, cf.
+# configure_services). Marqueur PROPRE, distinct de celui de
+# configure_shell_aliases : sinon une machine deja provisionnee ne recevrait
+# jamais ces fonctions (le premier marqueur court-circuite tout le bloc).
+
+configure_db_aliases() {
+    section "Alias bases de donnees (dbstart / dbstop)"
+
+    local bashrc="$HOME/.bashrc"
+    local marker='# workstation-setup: db aliases'
+
+    if grep -qF "$marker" "$bashrc" 2>/dev/null; then
+        log_ok "Alias dbstart/dbstop deja presents dans ~/.bashrc"
+        return
+    fi
+
+    log_info "Ajout de dbstart / dbstop dans ~/.bashrc"
+    cat >> "$bashrc" <<'EOF'
+
+# workstation-setup: db aliases
+# dbstart|dbstop [postgres|pg] [mariadb|mysql] [mongo|mongodb]
+# Sans argument : les 3 bases. Demarrage a la demande (non active au boot).
+_db_services() {
+    local arg
+    if [[ $# -eq 0 ]]; then
+        echo "postgresql mariadb mongod"
+        return
+    fi
+    for arg in "$@"; do
+        case "$arg" in
+            postgres|postgresql|pg) echo -n "postgresql " ;;
+            mariadb|mysql)          echo -n "mariadb " ;;
+            mongo|mongod|mongodb)   echo -n "mongod " ;;
+            *) echo "Base inconnue : '$arg' (postgres|mariadb|mongo)" >&2; return 1 ;;
+        esac
+    done
+}
+
+dbstart() {
+    local svcs; svcs=$(_db_services "$@") || return 1
+    # shellcheck disable=SC2086
+    sudo systemctl start $svcs
+}
+
+dbstop() {
+    local svcs; svcs=$(_db_services "$@") || return 1
+    # shellcheck disable=SC2086
+    sudo systemctl stop $svcs
+}
+EOF
+    log_ok "dbstart / dbstop ajoutes (reload : source ~/.bashrc)"
 }
 
 # ============================================================
@@ -1766,6 +1838,13 @@ print_manual_steps() {
   [ ] Reload du shell : "source ~/.bashrc" ou nouvelle session
                         (pour PATH npm-global + DOCKER_HOST + SDKMAN)
 
+  [ ] Bases de donnees : PAS demarrees au boot (a la demande) :
+                        dbstart [postgres|mariadb|mongo]   # sans arg = les 3
+                        dbstop  [postgres|mariadb|mongo]
+                        MariaDB est limite a 127.0.0.1 (/etc/my.cnf.d/99-local.cnf).
+                        Les commandes ci-dessous (psql, mariadb, mongosh...)
+                        supposent la base demarree : lance d'abord dbstart.
+
   [ ] PostgreSQL      : mot de passe SUPERUSER non defini par defaut.
                         - sudo -iu postgres psql
                         - ALTER USER postgres WITH PASSWORD '<nouveau>';
@@ -1952,6 +2031,7 @@ main() {
     configure_gitignore_global
     configure_git_perso_identity
     configure_shell_aliases
+    configure_db_aliases
     configure_hardware_optimization
     configure_keyboard
     configure_fingerprint

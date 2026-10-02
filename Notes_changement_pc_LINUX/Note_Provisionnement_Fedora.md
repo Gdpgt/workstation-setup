@@ -74,8 +74,9 @@ Le script fait, dans l'ordre :
     Claude Code = **natif** (bootstrap), plus via npm ; le script retire l'ancien npm
     orphelin s'il traîne (voir l'encadré dédié dans « Via npm global »).
 11. **Antigravity CLI** : install via curl (remplace Gemini CLI, deadline 18 juin 2026)
-12. **Services systemd** : init + enable de PostgreSQL, MariaDB, MongoDB ;
-    socket Podman rootless + `DOCKER_HOST` dans `.bashrc`
+12. **Services systemd** : init du cluster PostgreSQL ; PostgreSQL, MariaDB et MongoDB
+    **ne sont PAS activés au boot** (démarrage à la demande, `dbstart` / `dbstop`) ;
+    MariaDB forcé sur `127.0.0.1` ; socket Podman rootless + `DOCKER_HOST` dans `.bashrc`
 13. **Configuration Git** : ecrit `~/.gitconfig` via `git config --global`
     (options + alias). N'ecrit PAS l'identite (`user.name`/`user.email`),
     qui reste manuelle. `core.editor = idea --wait` (IntelliJ). Puis
@@ -119,6 +120,8 @@ C'est nécessaire pour que les ajouts du script soient pris en compte :
 
 Le script imprime la checklist détaillée à la fin. En résumé :
 
+- [ ] **Bases de données** : non démarrées au boot → `dbstart [postgres|mariadb|mongo]`
+      avant de les utiliser (cf. « Bases à la demande » plus bas)
 - [ ] **PostgreSQL** : définir le mot de passe `postgres` et passer `pg_hba.conf` en `scram-sha-256`
 - [ ] **MariaDB** : lancer `sudo mariadb-secure-installation`
 - [ ] **MongoDB** : par défaut bind 127.0.0.1 sans auth, à durcir si besoin
@@ -789,6 +792,28 @@ Podman.
 > 💡 Si un truc plante mystérieusement, vérifier d'abord : `echo $DOCKER_HOST`
 > (doit pointer vers le socket Podman) et `systemctl --user status podman.socket`.
 
+## ⚠️ Cas particulier : Bases à la demande (pas de démarrage au boot)
+
+PostgreSQL, MariaDB et MongoDB sont **installés mais `disabled`** : elles ne tournent que
+quand tu les lances. Raison : RAM gaspillée en permanence, et surface d'attaque inutile.
+
+- **Démarrer / arrêter** : `dbstart` / `dbstop` (sans argument = les 3 ; sinon
+  `postgres|pg`, `mariadb|mysql`, `mongo|mongodb`). Ce sont des fonctions `~/.bashrc`
+  (marqueur `# workstation-setup: db aliases`, **distinct** de celui des alias `dc`/`mvnw`
+  pour que les machines déjà provisionnées les reçoivent aussi) ; elles font
+  `sudo systemctl start|stop`.
+- **Écoute locale uniquement** : MariaDB écoutait sur `0.0.0.0:3306` (le
+  `bind-address` de `mariadb-server.cnf` est commenté = toutes interfaces), alors que
+  la zone firewall `FedoraWorkstation` ouvre 1025-65535. Le script écrit
+  `/etc/my.cnf.d/99-local.cnf` (`bind-address=127.0.0.1`). PostgreSQL
+  (`listen_addresses=localhost`) et MongoDB (`bindIp: 127.0.0.1`) étaient déjà locaux.
+- **Vérifier** : `systemctl is-enabled postgresql mariadb mongod` (→ `disabled`) ;
+  après `dbstart` : `ss -ltn | grep -E '3306|5432|27017'` (→ tout en `127.0.0.1` / `::1`).
+- Le script fait `disable` **sans `--now`** : il ne coupe pas une base en cours d'usage
+  (elle s'arrête au prochain reboot, ou avec `dbstop`).
+- Aucune étape du script n'utilise `psql` / `mongosh` : si une future étape en a besoin,
+  elle devra faire son propre `systemctl start`.
+
 ## ⚠️ Cas particulier : MongoDB sur Fedora
 
 MongoDB **n'est pas packagé dans les repos officiels Fedora** (problèmes de
@@ -1116,6 +1141,17 @@ différente (`--add-repo` au lieu de `addrepo`). À adapter si besoin.
 ---
 
 ## Changelog du script
+
+- **2026-10-02** — Bases de données à la demande + écoute locale :
+  - **`configure_services`** : plus de `systemctl enable --now` sur postgresql / mariadb /
+    mongod → `disable_service_autostart` (sans `--now`). L'`initdb` PostgreSQL est conservé.
+  - **MariaDB** : `configure_mariadb_bind_local` écrit `/etc/my.cnf.d/99-local.cnf`
+    (idempotent, `.bak` si un fichier différent existait). Constat : MariaDB écoutait sur
+    `0.0.0.0:3306` ; PostgreSQL et MongoDB étaient déjà locaux.
+  - **Nouveau `configure_db_aliases`** : fonctions `dbstart` / `dbstop`, avec leur propre
+    marqueur (le marqueur de `configure_shell_aliases` court-circuite tout le bloc : un
+    ajout dans ce bloc n'aurait jamais atteint les machines déjà provisionnées).
+  - Checklist de fin et étape 12 mises à jour.
 
 - **2026-09-08** — Maintenance : constat que l'essentiel est automatique + nouveau
   `update-java.sh`.
