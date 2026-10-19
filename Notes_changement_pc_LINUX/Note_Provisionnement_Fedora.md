@@ -88,7 +88,8 @@ Le script fait, dans l'ordre :
     `~/workspace` gardent l'email pro). Pas de `color.*` : `auto` est le défaut de
     git depuis 1.8.4.
 14. **Alias shell** : ajoute `dc` (`docker compose` → Podman) et la fonction
-    `mvnw` dans `~/.bashrc` (portage minimal du profil PowerShell)
+    `mvnw` dans `~/.bashrc` (portage minimal du profil PowerShell). `mvnw` marche
+    depuis n'importe quel sous-dossier du projet et accepte un `mvnw` sans bit x.
 15. **Optims hardware** : `thermald` (si CPU Intel) + extensions Flatpak VAAPI
     selon le vendor (Intel / nvidia ; rien pour AMD)
 16. **Configuration clavier** : layout `fr+oss` (French alt.) + shift-lock sur Caps Lock
@@ -1143,6 +1144,17 @@ différente (`--add-repo` au lieu de `addrepo`). À adapter si besoin.
 ---
 
 ## Changelog du script
+
+- **2026-10-19** — Fonction `mvnw` lançable depuis un sous-dossier :
+  - **Remontée des dossiers** : la fonction cherche `mvnw` dans le dossier courant
+    puis ses parents (ex. depuis `backend/src/...`), et le lance **depuis son
+    dossier** dans un sous-shell : Maven cherche le `pom.xml` dans le dossier
+    courant (sinon « there is no POM in this directory »), et le terminal ne change
+    pas de dossier.
+  - **`mvnw` sans bit x** (projet créé sous Windows) : lancé via `sh`.
+  - **Limite** : le bloc est gardé par le marqueur `# workstation-setup: shell
+    aliases` → une machine déjà provisionnée garde l'ancienne fonction (à remplacer
+    à la main dans `~/.bashrc`).
 
 - **2026-10-19** — Nettoyage de la config Git :
   - **Retrait** de `color.status/diff/branch = auto` : c'est le défaut de git depuis

@@ -1153,7 +1153,9 @@ configure_git_perso_identity() {
 # Portage minimal du profil PowerShell Windows. On ne porte QUE ce qui n'est pas
 # deja natif sous Fedora :
 #  - 'dc'   : raccourci 'docker compose' (route vers Podman via podman-docker).
-#  - 'mvnw' : wrapper Maven Wrapper avec message clair si absent du projet.
+#  - 'mvnw' : lance le Maven Wrapper du projet depuis n'importe quel sous-dossier
+#             (remonte jusqu'au mvnw, l'execute depuis son dossier car Maven
+#             cherche le pom.xml dans le dossier courant).
 # Volontairement NON porte : posh-git (bash-completion deja installe), encodage
 # UTF-8 (deja le defaut sur Fedora), './mvnw' natif executable.
 #
@@ -1178,14 +1180,26 @@ configure_shell_aliases() {
 #        donc 'docker compose' route vers podman compose.
 alias dc='docker compose'
 
-# Wrapper Maven Wrapper : message clair si ./mvnw absent du projet courant.
+# Wrapper Maven Wrapper : remonte les dossiers jusqu'au mvnw du projet et le lance
+# depuis son dossier (Maven cherche le pom.xml dans le dossier courant), dans un
+# sous-shell pour ne pas changer le dossier du terminal.
+# Si mvnw existe sans le bit x (projet cree sous Windows), on le lance via sh.
 mvnw() {
-    if [[ ! -x ./mvnw ]]; then
-        echo "Maven Wrapper (./mvnw) manquant dans '$(pwd)'" >&2
-        echo "Sans wrapper -> mvn clean compile" >&2
-        return 1
-    fi
-    ./mvnw "$@"
+    local d=$PWD
+    while [[ "$d" != / ]]; do
+        if [[ -f "$d/mvnw" ]]; then
+            if [[ -x "$d/mvnw" ]]; then
+                (cd "$d" && ./mvnw "$@")
+            else
+                (cd "$d" && sh ./mvnw "$@")
+            fi
+            return
+        fi
+        d=$(dirname "$d")
+    done
+    echo "Maven Wrapper (mvnw) introuvable depuis '$(pwd)'" >&2
+    echo "Sans wrapper -> mvn clean compile" >&2
+    return 1
 }
 EOF
     log_ok "Alias shell ajoutes (reload : source ~/.bashrc)"
