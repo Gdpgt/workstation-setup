@@ -612,6 +612,7 @@ if (-not $SkipScoop) {
 # existante a chaque run.
 # Git provient de Scoop (section precedente) ; si absent (ex: -SkipScoop), on
 # saute proprement.
+# Pas de color.* : 'auto' est le defaut de git depuis 1.8.4 (color.ui).
 
 Write-Section "Configuration Git (~/.gitconfig)"
 
@@ -622,9 +623,6 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     # et '&&' des alias ne doivent pas etre interpretes par PowerShell.
     $gitSettings = [ordered]@{
         'pull.rebase'       = 'true'
-        'color.status'      = 'auto'
-        'color.diff'        = 'auto'
-        'color.branch'      = 'auto'
         'core.editor'       = "'C:/Program Files/Notepad++/notepad++.exe' -multiInst -notabp -nosession"
         'core.excludesfile' = '~/.gitignore_global'
         'alias.ca'          = 'commit --amend'
@@ -737,16 +735,16 @@ npm-debug.log*
 }
 
 # ============================================================
-# Identite git perso (noreply) pour les repos sous ~/code
+# Identite git perso (email de contact public) pour les repos sous ~/code
 # ============================================================
 #
-# Ce repo est PUBLIC : un commit expose l'email git de la machine. Pour ne jamais
-# fuiter d'email reel (gmail perso, ou email pro sur un PC de travail), on route
-# tous mes repos PERSO (ranges sous ~/code) vers l'adresse noreply GitHub, via un
+# Ce repo est PUBLIC : un commit expose l'email git de la machine. Pour ne pas
+# fuiter le gmail perso (ni l'email pro sur un PC de travail), on route tous mes
+# repos PERSO (ranges sous ~/code) vers mon email de contact public, via un
 # 'includeIf' conditionnel. Ca ne touche PAS l'identite globale par defaut : sur
 # un PC pro, les repos sous ~/workspace gardent l'email pro. Idempotent.
 
-Write-Section "Identite git perso (noreply pour ~/code)"
+Write-Section "Identite git perso (email de contact pour ~/code)"
 
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     Write-Warn "git absent : identite perso non configuree (non bloquant)"
@@ -757,7 +755,7 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     git config --file $persoFile user.email "contact@guillaumedepuget.fr"
     # gitdir/i : matching insensible a la casse (chemins Windows).
     git config --global 'includeIf.gitdir/i:~/code/.path' '~/.gitconfig-perso'
-    Write-Ok "Repos sous ~/code -> noreply (includeIf)"
+    Write-Ok "Repos sous ~/code -> email de contact (includeIf)"
 }
 
 # ============================================================

@@ -9,15 +9,26 @@
 
 Import-Module posh-git
 
-# Wrapper Maven Wrapper : 'mvnw' depuis n'importe ou, avec message clair
-# si le wrapper est absent du projet courant.
+# Wrapper Maven Wrapper : 'mvnw' depuis n'importe quel sous-dossier du projet.
+# Remonte jusqu'au mvnw.cmd et le lance depuis son dossier (Maven cherche le
+# pom.xml dans le dossier courant) ; finally => retour au dossier de depart
+# meme si Maven echoue ou est interrompu (Ctrl+C).
 function Invoke-MvnwWrapper {
-    if (-not (Test-Path ".\mvnw.cmd")) {
-        Write-Error "Maven Wrapper manquant dans '$(Get-Location)'"
+    $dir = (Get-Location -PSProvider FileSystem).Path
+    while ($dir -and -not (Test-Path (Join-Path $dir 'mvnw.cmd'))) {
+        $dir = Split-Path $dir -Parent
+    }
+    if (-not $dir) {
+        Write-Error "Maven Wrapper (mvnw.cmd) introuvable depuis '$(Get-Location)'"
         Write-Host "Sans wrapper -> mvn clean compile" -ForegroundColor Yellow
         return 1
     }
-    & ".\mvnw.cmd" @args
+    Push-Location $dir
+    try {
+        & ".\mvnw.cmd" @args
+    } finally {
+        Pop-Location
+    }
 }
 
 Set-Alias mvnw Invoke-MvnwWrapper

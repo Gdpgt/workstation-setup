@@ -66,8 +66,10 @@ dans l'ordre :
    n'écrit pas l'identité (`user.name`/`user.email`), qui reste manuelle. Puis
    crée `~/.gitignore_global` (pointé par `core.excludesfile`) **si absent** :
    exclusions OS / IDE / build / `.env` (UTF-8 sans BOM). Enfin pose l'identité
-   perso (noreply GitHub) pour les repos sous `~/code` via `includeIf` (repo
-   public → jamais d'email réel exposé ; repos pro sous `~/workspace` = email pro)
+   perso (email de contact public `contact@guillaumedepuget.fr`) pour les repos
+   sous `~/code` via `includeIf` (repo public → ni le gmail perso ni l'email pro
+   exposés ; repos pro sous `~/workspace` = email pro). Pas de `color.*` : `auto`
+   est le défaut de git depuis 1.8.4
 5. Installe les CLI IA via npm (`codex`) + Angular CLI (`@angular/cli` → `ng`).
    **Claude Code = natif** (bootstrap), plus via npm ; le script retire l'ancien
    npm orphelin s'il traîne
@@ -373,8 +375,9 @@ ALTER USER postgres WITH PASSWORD '<nouveau_mdp>';
 
 - `Microsoft.PowerShell_profile.ps1` (versionné dans le repo) copié vers
   `<Documents>\PowerShell\profile.workstation.ps1`, dot-sourcé depuis `$PROFILE`.
-  Contenu : `Import-Module posh-git`, wrapper `mvnw` (`Invoke-MvnwWrapper`),
-  alias `dc` (`docker compose`), encodage UTF-8 console (psql).
+  Contenu : `Import-Module posh-git`, wrapper `mvnw` (`Invoke-MvnwWrapper`,
+  lançable depuis n'importe quel sous-dossier du projet), alias `dc`
+  (`docker compose`), encodage UTF-8 console (psql).
   - Une fonction de déploiement propre à un projet pro est **volontairement
     hors repo** (contenu privé) : elle reste dans le `$PROFILE` local, préservée
     par le dot-source.
@@ -501,6 +504,18 @@ de wipe.
 ---
 
 ## Changelog du script
+
+- **2026-10-19** — Config Git nettoyée + `mvnw` depuis un sous-dossier :
+  - **Retrait** de `color.status/diff/branch = auto` : défaut de git depuis 1.8.4
+    (`color.ui = auto`), sans effet.
+  - **Correction** : l'identité perso était décrite comme « noreply GitHub » alors que
+    la valeur posée est `contact@guillaumedepuget.fr`. Commentaires, logs et note
+    alignés ; comportement inchangé.
+  - **Profil PowerShell** : `Invoke-MvnwWrapper` remonte les dossiers jusqu'à
+    `mvnw.cmd` et le lance depuis son dossier (`Push-Location` / `Pop-Location` dans un
+    `finally`) : Maven cherche le `pom.xml` dans le dossier courant. Le profil étant
+    réécrit à chaque run, une machine déjà provisionnée le reçoit au prochain run.
+  - Non testé sur machine réelle.
 
 - **2026-10-02** — Bases de données à la demande (`-HardenDb`, `dbstart` / `dbstop`) :
   - **Nouveau switch opt-in `-HardenDb`** (PowerShell ADMIN, court-circuité **avant** le refus
