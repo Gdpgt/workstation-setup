@@ -90,6 +90,9 @@ Le script fait, dans l'ordre :
 14. **Alias shell** : ajoute `dc` (`docker compose` → Podman) et la fonction
     `mvnw` dans `~/.bashrc` (portage minimal du profil PowerShell). `mvnw` marche
     depuis n'importe quel sous-dossier du projet et accepte un `mvnw` sans bit x.
+    Si Tailscale est installé : `vpn-on` / `vpn-off` (exit node `devbox` à la
+    demande, sur wifi public) et `tailscale set --operator=$USER` pour s'en servir
+    sans sudo.
 15. **Optims hardware** : `thermald` (si CPU Intel) + extensions Flatpak VAAPI
     selon le vendor (Intel / nvidia ; rien pour AMD)
 16. **Configuration clavier** : layout `fr+oss` (French alt.) + shift-lock sur Caps Lock
@@ -1144,6 +1147,18 @@ différente (`--add-repo` au lieu de `addrepo`). À adapter si besoin.
 ---
 
 ## Changelog du script
+
+- **2026-10-19** — Exit node Tailscale à la demande :
+  - **Nouveau `configure_vpn_aliases`** : alias `vpn-on` (`tailscale set
+    --exit-node=devbox --exit-node-allow-lan-access=false`) et `vpn-off`, pour faire
+    sortir tout le trafic par la box de la maison sur un wifi public. Marqueur propre
+    (`# workstation-setup: vpn aliases`) pour que les machines déjà provisionnées les
+    reçoivent.
+  - **`tailscale set --operator=$USER`** : sans lui, `tailscale set` exige sudo.
+  - **Sauté si Tailscale est absent** (le script ne l'installe pas).
+  - **Prérequis côté homelab** : devbox annonce l'exit node (`tailscale set
+    --advertise-exit-node`, forwarding IPv4/IPv6 dans `/etc/sysctl.d`) et la route
+    est approuvée dans la console d'admin.
 
 - **2026-10-19** — Fonction `mvnw` lançable depuis un sous-dossier :
   - **Remontée des dossiers** : la fonction cherche `mvnw` dans le dossier courant

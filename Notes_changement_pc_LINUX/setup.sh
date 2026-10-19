@@ -1258,6 +1258,43 @@ EOF
     log_ok "dbstart / dbstop ajoutes (reload : source ~/.bashrc)"
 }
 
+# 'vpn-on' / 'vpn-off' : exit node Tailscale a la demande (wifi public), via la
+# VM devbox du homelab. Tailscale n'est pas installe par ce script : etape
+# sautee s'il est absent. '--operator' autorise 'tailscale set' sans sudo.
+# Marqueur propre, meme raison que configure_db_aliases.
+
+configure_vpn_aliases() {
+    section "Alias exit node Tailscale (vpn-on / vpn-off)"
+
+    if ! command -v tailscale >/dev/null 2>&1; then
+        log_warn "Tailscale absent : vpn-on / vpn-off non poses"
+        return
+    fi
+
+    sudo tailscale set --operator="$USER" \
+        && log_ok "Operateur Tailscale : $USER (tailscale set sans sudo)" \
+        || log_warn "tailscale set --operator a echoue (daemon arrete ?)"
+
+    local bashrc="$HOME/.bashrc"
+    local marker='# workstation-setup: vpn aliases'
+
+    if grep -qF "$marker" "$bashrc" 2>/dev/null; then
+        log_ok "Alias vpn-on/vpn-off deja presents dans ~/.bashrc"
+        return
+    fi
+
+    log_info "Ajout de vpn-on / vpn-off dans ~/.bashrc"
+    cat >> "$bashrc" <<'EOF'
+
+# workstation-setup: vpn aliases
+# Tout le trafic sort par la box de la maison via l'exit node devbox (wifi public).
+# Verifier : curl ifconfig.me -> IP publique de la maison.
+alias vpn-on='tailscale set --exit-node=devbox --exit-node-allow-lan-access=false'
+alias vpn-off='tailscale set --exit-node='
+EOF
+    log_ok "vpn-on / vpn-off ajoutes (reload : source ~/.bashrc)"
+}
+
 # ============================================================
 # Detection GPU/CPU (vendor) + paquets hardware adaptes
 # ============================================================
@@ -2045,6 +2082,7 @@ main() {
     configure_git_perso_identity
     configure_shell_aliases
     configure_db_aliases
+    configure_vpn_aliases
     configure_hardware_optimization
     configure_keyboard
     configure_fingerprint
