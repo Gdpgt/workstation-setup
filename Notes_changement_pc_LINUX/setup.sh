@@ -991,6 +991,8 @@ configure_services() {
 #    moment d'un commit, donc sans impact a l'install.
 #  - pas de safe.directory : les entrees Windows (C:/Users/...) sont des chemins
 #    invalides sur Linux.
+#
+# Pas de color.* : 'auto' est le defaut de git depuis 1.8.4 (color.ui).
 
 configure_git() {
     section "Configuration Git (~/.gitconfig)"
@@ -1003,9 +1005,6 @@ configure_git() {
     # cle <valeur> : une entree par ligne (la valeur peut contenir des espaces)
     local -a git_settings=(
         "pull.rebase|true"
-        "color.status|auto"
-        "color.diff|auto"
-        "color.branch|auto"
         "core.editor|idea --wait"
         "core.excludesfile|~/.gitignore_global"
         "alias.ca|commit --amend"
@@ -1115,12 +1114,12 @@ EOF
 }
 
 # ============================================================
-# Identite git perso (noreply) pour les repos sous ~/code
+# Identite git perso (email de contact public) pour les repos sous ~/code
 # ============================================================
 #
-# Ce repo est PUBLIC : un commit expose l'email git de la machine. Pour ne jamais
-# fuiter d'email reel (gmail perso, ou email pro sur un PC de travail), on route
-# tous mes repos PERSO (ranges sous ~/code) vers l'adresse noreply GitHub, via un
+# Ce repo est PUBLIC : un commit expose l'email git de la machine. Pour ne pas
+# fuiter le gmail perso (ni l'email pro sur un PC de travail), on route tous mes
+# repos PERSO (ranges sous ~/code) vers mon email de contact public, via un
 # 'includeIf' conditionnel. Ca ne touche PAS l'identite globale par defaut : sur
 # un PC pro, les repos sous ~/workspace gardent l'email pro.
 #
@@ -1128,7 +1127,7 @@ EOF
 # machine provisionnee. Idempotent : 'git config' reecrit la meme valeur.
 
 configure_git_perso_identity() {
-    section "Identite git perso (noreply pour ~/code)"
+    section "Identite git perso (email de contact pour ~/code)"
 
     if ! command -v git >/dev/null 2>&1; then
         log_warn "git absent : identite perso non configuree (non bloquant)"
@@ -1144,7 +1143,7 @@ configure_git_perso_identity() {
     # includeIf : tout repo dont le .git est sous ~/code/ utilise l'identite perso.
     git config --global "includeIf.gitdir:~/code/.path" "~/.gitconfig-perso"
 
-    log_ok "Repos sous ~/code -> noreply (includeIf)"
+    log_ok "Repos sous ~/code -> email de contact (includeIf)"
 }
 
 # ============================================================

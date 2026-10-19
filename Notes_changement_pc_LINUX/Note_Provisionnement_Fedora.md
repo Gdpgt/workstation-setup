@@ -82,9 +82,11 @@ Le script fait, dans l'ordre :
     qui reste manuelle. `core.editor = idea --wait` (IntelliJ). Puis
     `configure_gitignore_global()` cree `~/.gitignore_global` (pointe par
     `core.excludesfile`) **si absent** : exclusions OS / IDE / build / `.env`.
-    Enfin `configure_git_perso_identity()` pose l'identité perso (noreply GitHub)
-    pour les repos sous `~/code` via `includeIf` (repo public → jamais d'email réel
-    exposé ; les repos pro sous `~/workspace` gardent l'email pro).
+    Enfin `configure_git_perso_identity()` pose l'identité perso (email de contact
+    public `contact@guillaumedepuget.fr`) pour les repos sous `~/code` via `includeIf`
+    (repo public → ni le gmail perso ni l'email pro exposés ; les repos pro sous
+    `~/workspace` gardent l'email pro). Pas de `color.*` : `auto` est le défaut de
+    git depuis 1.8.4.
 14. **Alias shell** : ajoute `dc` (`docker compose` → Podman) et la fonction
     `mvnw` dans `~/.bashrc` (portage minimal du profil PowerShell)
 15. **Optims hardware** : `thermald` (si CPU Intel) + extensions Flatpak VAAPI
@@ -1141,6 +1143,14 @@ différente (`--add-repo` au lieu de `addrepo`). À adapter si besoin.
 ---
 
 ## Changelog du script
+
+- **2026-10-19** — Nettoyage de la config Git :
+  - **Retrait** de `color.status/diff/branch = auto` : c'est le défaut de git depuis
+    1.8.4 (`color.ui = auto`), les écrire n'avait aucun effet.
+  - **Correction** : l'identité perso était décrite comme « noreply GitHub » alors que
+    la valeur posée est `contact@guillaumedepuget.fr` (email de contact public, pas une
+    adresse `@users.noreply.github.com`). Commentaires, logs et note alignés sur la
+    valeur réelle ; comportement inchangé.
 
 - **2026-10-02** — Bases de données à la demande + écoute locale :
   - **`configure_services`** : plus de `systemctl enable --now` sur postgresql / mariadb /
