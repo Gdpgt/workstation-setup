@@ -943,6 +943,47 @@ $sourceLine
 }
 
 # ============================================================
+# Applis au demarrage de session
+# ============================================================
+#
+# Meme strategie que le profil : launch-apps.ps1 (versionne) est copie dans
+# %LOCALAPPDATA%\StartupApps\ (reecrit a chaque run), et un raccourci du dossier
+# Demarrage le lance via powershell.exe (present sur tout Windows, pas besoin de
+# pwsh). Raccourci recree a chaque run -> idempotent.
+
+Write-Section "Applis au demarrage"
+
+$launchSource = Join-Path $PSScriptRoot 'launch-apps.ps1'
+
+if (-not (Test-Path $launchSource)) {
+    Write-Err "Script versionne introuvable : $launchSource"
+    Register-Failure -Type 'startup' -Package 'launch-apps.ps1' `
+        -Reason "source file missing: $launchSource"
+} else {
+    try {
+        $launchDir  = Join-Path $env:LOCALAPPDATA 'StartupApps'
+        $launchFile = Join-Path $launchDir 'launch-apps.ps1'
+        New-Item -ItemType Directory -Path $launchDir -Force | Out-Null
+        Copy-Item -Path $launchSource -Destination $launchFile -Force
+        Write-Ok "Script copie : $launchFile"
+
+        $startupDir = [Environment]::GetFolderPath('Startup')
+        $lnkPath    = Join-Path $startupDir 'Lancer mes applis.lnk'
+        $shell = New-Object -ComObject WScript.Shell
+        $lnk = $shell.CreateShortcut($lnkPath)
+        $lnk.TargetPath  = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        $lnk.Arguments   = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$launchFile`""
+        $lnk.WindowStyle = 7
+        $lnk.Save()
+        Write-Ok "Raccourci Demarrage : $lnkPath"
+    } catch {
+        $msg = $_.Exception.Message
+        Write-Err "Applis au demarrage : $msg"
+        Register-Failure -Type 'startup' -Package 'launch-apps.ps1' -Reason $msg
+    }
+}
+
+# ============================================================
 # Variables d'environnement
 # ============================================================
 

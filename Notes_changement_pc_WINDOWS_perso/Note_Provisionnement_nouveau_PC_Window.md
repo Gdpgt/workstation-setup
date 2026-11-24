@@ -79,8 +79,12 @@ dans l'ordre :
 8. Pose le **profil PowerShell** partagé (posh-git, wrapper `mvnw`, alias `dc`,
    encodage UTF-8 console) — copie `profile.workstation.ps1` et l'ajoute en
    dot-source dans `$PROFILE` (sans écraser les persos locales)
-9. Configure `CLAUDE_CODE_GIT_BASH_PATH`
-10. Affiche la checklist des étapes manuelles restantes
+9. Pose le **lancement des applis à l'ouverture de session** (IntelliJ, Chrome,
+   Outlook, Teams, OneNote, Marvin) — copie `launch-apps.ps1` dans
+   `%LOCALAPPDATA%\StartupApps\` + raccourci « Lancer mes applis » dans
+   `shell:startup`
+10. Configure `CLAUDE_CODE_GIT_BASH_PATH`
+11. Affiche la checklist des étapes manuelles restantes
 
 Idempotent : on peut le relancer sans casser quoi que ce soit.
 
@@ -382,6 +386,27 @@ ALTER USER postgres WITH PASSWORD '<nouveau_mdp>';
     hors repo** (contenu privé) : elle reste dans le `$PROFILE` local, préservée
     par le dot-source.
 
+### Applis au démarrage de session (script)
+
+- `launch-apps.ps1` (versionné) copié vers `%LOCALAPPDATA%\StartupApps\`, lancé par
+  le raccourci `shell:startup\Lancer mes applis.lnk` (`powershell.exe` caché,
+  `-ExecutionPolicy Bypass`).
+- Lance IntelliJ, Chrome, Outlook (le **nouveau**, pas le classique), Teams, OneNote et
+  Marvin en les cherchant **par nom** dans le menu Démarrer : d'abord le raccourci
+  `.lnk` (applis Win32), sinon l'AUMID via `Get-StartApps` + `shell:AppsFolder` (applis
+  Store : Teams, nouvel Outlook). Aucun chemin codé en dur, donc insensible aux montées
+  de version et à l'installeur (MSI, Store, winget, scoop, choco). Plusieurs versions
+  d'IntelliJ → la plus récente (tri par numéro de version).
+  - ⚠️ Pas de `shell:AppsFolder` pour les Win32 : leur AppID est un chemin
+    (`{GUID}\…\idea64.exe`) et Explorer ouvre alors le dossier « Applications » au lieu
+    de l'appli (constaté sur IntelliJ).
+- Appli absente (ex. Marvin pas encore installé) → ligne dans
+  `%LOCALAPPDATA%\StartupApps\launch-apps.log`, les autres se lancent quand même.
+- Modifier la liste : éditer `$apps` dans `launch-apps.ps1` puis relancer `setup.ps1`.
+- Limites : ne restaure ni les onglets (régler Chrome sur « Continuer là où je me suis
+  arrêté »), ni le placement des fenêtres sur les bureaux virtuels (pas d'API publique).
+  Chrome déjà ouvert → une fenêtre en plus.
+
 ### Manuel (non scriptable)
 
 - **Antigravity 2.0** (app desktop d'orchestration d'agents — DL sur https://antigravity.google/download)
@@ -504,6 +529,14 @@ de wipe.
 ---
 
 ## Changelog du script
+
+- **2026-11-24** — Applis au démarrage de session :
+  - **Nouveau `launch-apps.ps1`** + section « Applis au demarrage » dans `setup.ps1` :
+    copie dans `%LOCALAPPDATA%\StartupApps\` et raccourci dans `shell:startup`.
+  - Résolution par nom (`.lnk` du menu Démarrer, sinon AUMID `Get-StartApps`) plutôt
+    que par chemin.
+  - `launch-apps.ps1` testé sur machine réelle (6 applis lancées) ; section de
+    `setup.ps1` exécutée isolément, pas via un run complet.
 
 - **2026-10-19** — Config Git nettoyée + `mvnw` depuis un sous-dossier :
   - **Retrait** de `color.status/diff/branch = auto` : défaut de git depuis 1.8.4
